@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [0.3.0] - Unreleased
+## [0.2.0] - 2026-03-16
 
 - Add `-Namespace` parameter to specify unit scope names for unqualified unit
   resolution via the `-NS` flag; required for modern Delphi projects using
