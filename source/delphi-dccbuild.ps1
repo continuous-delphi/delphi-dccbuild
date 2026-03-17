@@ -108,6 +108,10 @@ param(
   # joined with semicolons.
   [string[]]$IncludePath = @(),
 
+  # Additional conditional defines (-D flag).  Multiple defines are joined
+  # with semicolons and passed as a single -D argument.
+  [string[]]$Define = @(),
+
   [switch]$ShowOutput
 )
 
@@ -258,6 +262,7 @@ function Invoke-DccProject {
     [string]$DcuOutputDir,
     [string[]]$UnitSearchPath = @(),
     [string[]]$IncludePath    = @(),
+    [string[]]$Define         = @(),
     [switch]$ShowOutput
   )
 
@@ -280,6 +285,9 @@ function Invoke-DccProject {
   # Search paths: multiple entries joined with semicolons into a single flag
   if ($UnitSearchPath.Count -gt 0) { $dccArgs += "-U$($UnitSearchPath -join ';')" }
   if ($IncludePath.Count -gt 0)    { $dccArgs += "-I$($IncludePath -join ';')" }
+
+  # Additional defines: multiple entries joined with semicolons into a single -D flag
+  if ($Define.Count -gt 0) { $dccArgs += "-D$($Define -join ';')" }
 
   return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -ShowOutput:$ShowOutput
 }
@@ -335,6 +343,7 @@ try {
     -DcuOutputDir    $DcuOutputDir `
     -UnitSearchPath  $UnitSearchPath `
     -IncludePath     $IncludePath `
+    -Define          $Define `
     -ShowOutput:$ShowOutput
 
   $resultObj = [pscustomobject]@{
