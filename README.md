@@ -217,6 +217,34 @@ Example:
 -IncludePath @('C:\Inc\Headers')
 ```
 
+## -Namespace
+
+```text
+-Namespace <string[]>
+```
+
+Unit scope names (namespace prefixes) the compiler searches when resolving
+unqualified unit names.  Accepts an array of scope name strings.  Multiple
+names are joined with semicolons and passed as a single `-NS` argument:
+
+```text
+-NSSystem;Vcl;Vcl.Imaging
+```
+
+This is important for modern Delphi (XE2+) projects that use namespaced RTL
+units such as `System.SysUtils` or `Vcl.Forms`.  When building outside the IDE
+without the project's `.cfg` file, the compiler cannot resolve `uses Forms`
+unless the `Vcl` scope is listed here.
+
+When omitted (or an empty array), no `-NS` argument is added.  The result
+object's `.namespace` is `$null` when no names are supplied.
+
+Example:
+
+```powershell
+-Namespace @('System', 'Vcl', 'Vcl.Imaging', 'Data')
+```
+
 ## -Define
 
 ```text

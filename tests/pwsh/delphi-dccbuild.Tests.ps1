@@ -45,6 +45,9 @@
     DcuOutputDir adds -N0 flag.
     UnitSearchPath single entry adds -U flag; multiple joined with semicolons.
     IncludePath single entry adds -I flag; multiple joined with semicolons.
+    Namespace single entry adds a -NS flag with that value.
+    Namespace multiple entries are joined with semicolons into a single -NS flag.
+    Namespace omitted adds no -NS argument.
     Define omitted adds no extra -D argument beyond the config define.
     Define single entry adds a -D flag with that value.
     Define multiple entries are joined with semicolons into a single -D flag.
@@ -666,6 +669,77 @@ Describe 'Invoke-DccProject' {
 
     It 'passes semicolon-separated -I argument' {
       ($script:capturedArgs -contains '-IC:\Inc\A;C:\Inc\B') | Should -Be $true
+    }
+
+  }
+
+  Context 'Namespace single entry adds a -NS flag with that value' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Namespace    @('System')
+    }
+
+    It 'includes -NSSystem' {
+      $script:capturedArgs | Should -Contain '-NSSystem'
+    }
+
+  }
+
+  Context 'Namespace multiple entries are joined with semicolons into a single -NS flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Namespace    @('System', 'Vcl', 'Vcl.Imaging')
+    }
+
+    It 'includes -NSSystem;Vcl;Vcl.Imaging as a single argument' {
+      $script:capturedArgs | Should -Contain '-NSSystem;Vcl;Vcl.Imaging'
+    }
+
+  }
+
+  Context 'Namespace omitted adds no -NS argument' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with -NS' {
+      ($script:capturedArgs | Where-Object { $_ -like '-NS*' }) | Should -BeNullOrEmpty
     }
 
   }

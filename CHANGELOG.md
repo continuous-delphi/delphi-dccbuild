@@ -6,9 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ## [0.3.0] - Unreleased
 
-- Add support for passing compiler defines to DCC
-[#2](https://github.com/continuous-delphi/delphi-dccbuild/issues/2)
+- Add `-Namespace` parameter to specify unit scope names for unqualified unit
+  resolution via the `-NS` flag; required for modern Delphi projects using
+  namespaced RTL units (e.g. `System.SysUtils`, `Vcl.Forms`) when building
+  outside the IDE without a project `.cfg` file
+  [#4](https://github.com/continuous-delphi/delphi-dccbuild/issues/4)
 
+- Add support for passing compiler defines to DCC
+  [#2](https://github.com/continuous-delphi/delphi-dccbuild/issues/2)
 
 ## [0.1.0] - 2026-03-16
 
