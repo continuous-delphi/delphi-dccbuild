@@ -2,39 +2,48 @@
 
 ![delphi-dccbuild logo](https://continuous-delphi.github.io/assets/logos/delphi-dccbuild-480x270.png)
 
+[![CI](https://github.com/continuous-delphi/delphi-dccbuild/actions/workflows/ci.yml/badge.svg)](https://github.com/continuous-delphi/delphi-dccbuild/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-incubator-orange)
 ![License](https://img.shields.io/github/license/continuous-delphi/delphi-inspect.svg)
 ![Delphi](https://img.shields.io/badge/delphi-red)
 ![PowerShell](https://img.shields.io/badge/powershell-7.4%2B-blue)
 ![Continuous Delphi](https://img.shields.io/badge/org-continuous--delphi-red)
 
-
+Quick-start, or enhance your Delphi build automation with a standalone,
+MIT-licensed, CI-ready build tool from
+[Continuous-Delphi](https://github.com/continuous-delphi) -
+designed for automating builds using the DCC command-line compiler.
+See [delphi-msbuild](https://github.com/continuous-delphi/delphi-msbuild)
+for a similar tool that utilizes MSBuild.
 
 # Overview
 
 `delphi-dccbuild.ps1` builds a Delphi project using the standalone DCC
-command-line compiler (`dcc32.exe`, `dcc64.exe`, etc.).  It sources the
+command-line compiler (`dcc32.exe`, `dcc64.exe`...).  It sources the
 Delphi build environment from `rsvars.bat` before invoking the compiler.
 This ensures that `$(BDS)`, `$(BDSCOMMONDIR)`, and related environment
 variables are set, which is required for projects that reference those
 variables in their search paths and for cross-platform targets that
 rely on SDK paths configured by the installer.
 
-It is designed to be piped the output of `delphi-inspect.ps1
--DetectLatest -BuildSystem DCC`, which supplies the installation root
-directly.  An explicit `-RootDir` parameter is also accepted.
+It is designed to be used standalone by providing the `ProjectFile` path
+and the Delphi `RootDir` (and optionally the Platform and Config settings.)
+
+```powershell
+delphi-dccbuild.ps1 `
+  -ProjectFile .\src\MyApp.dpr `
+  -RootDir     'C:\Program Files (x86)\Embarcadero\Studio\23.0' `
+  -Platform    Win32 `
+  -Config      Release 
+```
+
+You can also pipe the output from `delphi-inspect.ps1` to automatically
+detect the `RootDir`.
 
 ```powershell
 delphi-inspect.ps1 -DetectLatest -Platform Win32 -BuildSystem DCC |
     delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr
 ```
-
-Note: DCC builds use the `.dpr` project file, not the `.dproj` file.
-For `.dproj`-based builds use
-[delphi-msbuild](https://github.com/continuous-delphi/delphi-msbuild)
-instead.
-
-------------------------------------------------------------------------
 
 # Usage
 
