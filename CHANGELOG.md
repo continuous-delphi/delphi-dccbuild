@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.3.0] - Unreleased
+
+- Add support for passing compiler defines to DCC
+[#2](https://github.com/continuous-delphi/delphi-dccbuild/issues/2)
+
+
 ## [0.1.0] - 2026-03-16
 
 - RC1 release of `delphi-dccbuild.ps1`
