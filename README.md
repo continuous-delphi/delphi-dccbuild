@@ -217,6 +217,41 @@ Example:
 -IncludePath @('C:\Inc\Headers')
 ```
 
+## -Define
+
+```text
+-Define <string[]>
+```
+
+One or more additional conditional defines to pass to the DCC compiler.  When
+at least one value is supplied, the defines are joined with semicolons and
+passed as a single `-D` argument:
+
+```text
+-DMYFLAG;USE_JEDI_JCL
+```
+
+This is appended to the existing config define (e.g. `-DDEBUG`) that the script
+always adds for the `-Config` value; it does not replace it.
+
+When no `-Define` values are supplied (the default), no extra `-D` argument is
+added beyond the config define.
+
+Examples:
+
+```powershell
+# Single define
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root -Define CI
+
+# Multiple defines
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
+    -Define MYFLAG, USE_JEDI_JCL
+
+# Via pipeline with defines
+delphi-inspect.ps1 -DetectLatest -Platform Win32 -BuildSystem DCC |
+    delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -Define CI, MYFLAG
+```
+
 ## -ShowOutput   (switch)
 
 ```text
