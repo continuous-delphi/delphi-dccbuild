@@ -45,6 +45,9 @@
     DcuOutputDir adds -N0 flag.
     UnitSearchPath single entry adds -U flag; multiple joined with semicolons.
     IncludePath single entry adds -I flag; multiple joined with semicolons.
+    Define omitted adds no extra -D argument beyond the config define.
+    Define single entry adds a -D flag with that value.
+    Define multiple entries are joined with semicolons into a single -D flag.
 
   Describe 8 - Main flow (via Invoke-ToolProcess, no DCC calls):
     Exits 3 when no rootDir is provided (no pipeline, no -RootDir).
@@ -663,6 +666,81 @@ Describe 'Invoke-DccProject' {
 
     It 'passes semicolon-separated -I argument' {
       ($script:capturedArgs -contains '-IC:\Inc\A;C:\Inc\B') | Should -Be $true
+    }
+
+  }
+
+  Context 'Define omitted adds no extra -D argument beyond the config define' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'contains exactly one -D argument (the config define)' {
+      @($script:capturedArgs | Where-Object { $_ -like '-D*' }).Count | Should -Be 1
+    }
+
+    It 'the only -D argument is -DDEBUG' {
+      $script:capturedArgs | Should -Contain '-DDEBUG'
+    }
+
+  }
+
+  Context 'Define single entry adds a -D flag with that value' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Define       @('MYFLAG')
+    }
+
+    It 'includes -DMYFLAG' {
+      $script:capturedArgs | Should -Contain '-DMYFLAG'
+    }
+
+  }
+
+  Context 'Define multiple entries are joined with semicolons into a single -D flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Define       @('MYFLAG', 'USE_JEDI_JCL')
+    }
+
+    It 'includes -DMYFLAG;USE_JEDI_JCL as a single argument' {
+      $script:capturedArgs | Should -Contain '-DMYFLAG;USE_JEDI_JCL'
     }
 
   }
