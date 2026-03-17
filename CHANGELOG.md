@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.3.0] - Unreleased
+
+- Ensure `PowerShell 5.1` compatibility for the delphi-dccbuild.ps1 script
+  (Tests remain the newer `pwsh`)  
+  [#6](https://github.com/continuous-delphi/delphi-dccbuild/issues/6)
+
 ## [0.2.0] - 2026-03-16
 
 - Add `-Namespace` parameter to specify unit scope names for unqualified unit
