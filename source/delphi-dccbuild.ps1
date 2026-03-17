@@ -108,6 +108,12 @@ param(
   # joined with semicolons.
   [string[]]$IncludePath = @(),
 
+  # Unit scope names searched when resolving unqualified unit names (-NS flag).
+  # Multiple names are joined with semicolons and passed as a single -NS argument.
+  # Required for modern Delphi projects that use namespaced RTL units (e.g. System.SysUtils)
+  # when building outside the IDE without a project .cfg file.
+  [string[]]$Namespace = @(),
+
   # Additional conditional defines (-D flag).  Multiple defines are joined
   # with semicolons and passed as a single -D argument.
   [string[]]$Define = @(),
@@ -262,6 +268,7 @@ function Invoke-DccProject {
     [string]$DcuOutputDir,
     [string[]]$UnitSearchPath = @(),
     [string[]]$IncludePath    = @(),
+    [string[]]$Namespace      = @(),
     [string[]]$Define         = @(),
     [switch]$ShowOutput
   )
@@ -285,6 +292,9 @@ function Invoke-DccProject {
   # Search paths: multiple entries joined with semicolons into a single flag
   if ($UnitSearchPath.Count -gt 0) { $dccArgs += "-U$($UnitSearchPath -join ';')" }
   if ($IncludePath.Count -gt 0)    { $dccArgs += "-I$($IncludePath -join ';')" }
+
+  # Unit scope names: multiple entries joined with semicolons into a single -NS flag
+  if ($Namespace.Count -gt 0) { $dccArgs += "-NS$($Namespace -join ';')" }
 
   # Additional defines: multiple entries joined with semicolons into a single -D flag
   if ($Define.Count -gt 0) { $dccArgs += "-D$($Define -join ';')" }
@@ -343,6 +353,7 @@ try {
     -DcuOutputDir    $DcuOutputDir `
     -UnitSearchPath  $UnitSearchPath `
     -IncludePath     $IncludePath `
+    -Namespace       $Namespace `
     -Define          $Define `
     -ShowOutput:$ShowOutput
 
@@ -359,6 +370,7 @@ try {
     dcuOutputDir   = if ([string]::IsNullOrWhiteSpace($DcuOutputDir))  { $null } else { $DcuOutputDir }
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }
     includePath    = if ($IncludePath.Count    -eq 0) { $null } else { $IncludePath }
+    namespace      = if ($Namespace.Count      -eq 0) { $null } else { $Namespace }
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output
