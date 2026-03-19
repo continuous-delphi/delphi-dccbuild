@@ -1,4 +1,4 @@
-# delphi-dccbuild.ps1 
+# delphi-dccbuild
 
 ![delphi-dccbuild logo](https://continuous-delphi.github.io/assets/logos/delphi-dccbuild-480x270.png)
 
