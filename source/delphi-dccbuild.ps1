@@ -363,6 +363,7 @@ try {
     platform       = $Platform
     config         = $Config
     target         = $Target
+    define         = $Define
     rootDir        = $resolvedRootDir
     rsvarsPath     = $rsvarsPath
     compilerPath   = $compilerPath
