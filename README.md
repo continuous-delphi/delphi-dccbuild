@@ -85,7 +85,8 @@ The Delphi installation root directory
 executable is derived from this path and the requested platform:
 
 - 32-bit compilers: `<RootDir>\bin\dcc32.exe`, `dccosx.exe`, etc.
-- 64-bit compilers: `<RootDir>\bin64\dcc64.exe`, `dccosx64.exe`, etc.
+- 64-bit compilers: `<RootDir>\bin64\dcc64.exe`, `dccarm64ec.exe`,
+  `dccosx64.exe`, etc.
 
 If omitted, `-RootDir` is taken from the `.rootDir` property of a
 piped `delphi-inspect` result object.  
@@ -107,6 +108,7 @@ Valid values and their corresponding executables:
 |-----------------|-----------------|------------|
 | `Win32`         | `dcc32.exe`     | `bin`      |
 | `Win64`         | `dcc64.exe`     | `bin64`    |
+| `WinARM64EC`    | `dccarm64ec.exe` | `bin64`   |
 | `macOS32`       | `dccosx.exe`    | `bin`      |
 | `macOS64`       | `dccosx64.exe`  | `bin64`    |
 | `macOSARM64`    | `dccosxarm64.exe` | `bin64`  |
@@ -445,7 +447,7 @@ $buildResult = delphi-inspect.ps1 -DetectLatest -Platform Win32 -BuildSystem DCC
 if ($buildResult.success) {
     # run tests, package, deploy, etc.
 }
-111
+```
 
 ## Example 6) Error -- no Delphi installation supplied (exit 3)
 

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+- Add `WinARM64EC` as a valid DCC platform value, mapped to
+  `bin64\dccarm64ec.exe`, with focused tests for compiler name, bin folder,
+  and compiler path resolution
+- Correct the release template to describe `.dpr` projects and
+  `delphi-inspect -DetectLatest -BuildSystem DCC`
+
 ## [0.3.0] - 2026-03-17
 
 - Ensure `PowerShell 5.1` compatibility for the delphi-dccbuild.ps1 script

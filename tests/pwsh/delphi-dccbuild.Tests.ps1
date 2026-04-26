@@ -18,10 +18,12 @@
 
   Describe 3 - Get-CompilerBinFolder:
     Returns bin64 for 64-bit compiler names; bin for all others.
+    Returns bin64 for dccarm64ec.
 
   Describe 4 - Get-CompilerPath:
     Produces the correct full path for Win32 (bin\dcc32.exe).
     Produces the correct full path for Win64 (bin64\dcc64.exe).
+    Produces the correct full path for WinARM64EC (bin64\dccarm64ec.exe).
     Produces the correct full path for Android32 (bin\dccaarm.exe).
 
   Describe 5 - Get-RsvarsPath:
@@ -124,6 +126,10 @@ Describe 'Get-CompilerName' {
     Get-CompilerName -Platform 'Win64' | Should -Be 'dcc64'
   }
 
+  It 'returns dccarm64ec for WinARM64EC' {
+    Get-CompilerName -Platform 'WinARM64EC' | Should -Be 'dccarm64ec'
+  }
+
   It 'returns dccosx for macOS32' {
     Get-CompilerName -Platform 'macOS32' | Should -Be 'dccosx'
   }
@@ -163,6 +169,10 @@ Describe 'Get-CompilerBinFolder' {
 
   It 'returns bin64 for dcc64' {
     Get-CompilerBinFolder -CompilerName 'dcc64' | Should -Be 'bin64'
+  }
+
+  It 'returns bin64 for dccarm64ec' {
+    Get-CompilerBinFolder -CompilerName 'dccarm64ec' | Should -Be 'bin64'
   }
 
   It 'returns bin for dccosx (macOS32)' {
@@ -208,6 +218,12 @@ Describe 'Get-CompilerPath' {
     $root   = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'fake-delphi', '23.0')
     $result = Get-CompilerPath -RootDir $root -Platform 'Win64'
     $result | Should -Be ([System.IO.Path]::Combine($root, 'bin64', 'dcc64.exe'))
+  }
+
+  It 'produces bin64/dccarm64ec.exe for WinARM64EC' {
+    $root   = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'fake-delphi', '23.0')
+    $result = Get-CompilerPath -RootDir $root -Platform 'WinARM64EC'
+    $result | Should -Be ([System.IO.Path]::Combine($root, 'bin64', 'dccarm64ec.exe'))
   }
 
   It 'produces bin/dccaarm.exe for Android32' {

@@ -34,7 +34,7 @@ NOTES
   rsvars.bat is expected at <RootDir>\bin\rsvars.bat.
   The compiler executable is located at:
     <RootDir>\bin\dcc32.exe      (Win32, macOS32, iOS32, iOSSimulator32, Android32)
-    <RootDir>\bin64\dcc64.exe    (Win64, macOS64, macOSARM64, Linux64, etc.)
+    <RootDir>\bin64\dcc64.exe    (Win64, WinARM64EC, macOS64, macOSARM64, Linux64, etc.)
 
   When piped a delphi-inspect result object, RootDir is taken from the
   object's .rootDir property.  An explicit -RootDir parameter takes precedence.
@@ -81,7 +81,7 @@ param(
 
   [string]$RootDir,
 
-  [ValidateSet('Win32','Win64','macOS32','macOS64','macOSARM64','Linux64',
+  [ValidateSet('Win32','Win64','WinARM64EC','macOS32','macOS64','macOSARM64','Linux64',
                'iOS32','iOSSimulator32','iOS64','iOSSimulator64','Android32','Android64')]
   [string]$Platform = 'Win32',
 
@@ -139,6 +139,7 @@ $script:Version = '0.3.0'
 $script:CompilerMap = @{
   'Win32'          = 'dcc32'
   'Win64'          = 'dcc64'
+  'WinARM64EC'     = 'dccarm64ec'
   'macOS32'        = 'dccosx'
   'macOS64'        = 'dccosx64'
   'macOSARM64'     = 'dccosxarm64'
@@ -223,7 +224,7 @@ function Get-CompilerName {
 # 64-bit compilers live in bin64; all others live in bin.
 function Get-CompilerBinFolder {
   param([string]$CompilerName)
-  if ($CompilerName.EndsWith('64')) { return 'bin64' }
+  if ($CompilerName.EndsWith('64') -or $CompilerName -eq 'dccarm64ec') { return 'bin64' }
   return 'bin'
 }
 
