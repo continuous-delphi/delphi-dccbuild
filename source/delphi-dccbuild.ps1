@@ -33,8 +33,8 @@ NOTES
   -RootDir is the Delphi installation root (e.g. C:\RAD\Studio\23.0).
   rsvars.bat is expected at <RootDir>\bin\rsvars.bat.
   The compiler executable is located at:
-    <RootDir>\bin\dcc32.exe      (Win32, macOS32, iOS32, iOSSimulator32, Android32)
-    <RootDir>\bin64\dcc64.exe    (Win64, WinARM64EC, macOS64, macOSARM64, Linux64, etc.)
+    <RootDir>\bin\<compiler>.exe   (Win32, macOS32, iOS32, iOSSimulator32, Android32)
+    <RootDir>\bin64\<compiler>.exe (Win64, WinARM64EC, macOS64, macOSARM64, Linux64, etc.)
 
   When piped a delphi-inspect result object, RootDir is taken from the
   object's .rootDir property.  An explicit -RootDir parameter takes precedence.

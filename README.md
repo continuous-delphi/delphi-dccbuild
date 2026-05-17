@@ -151,7 +151,7 @@ Valid values:
 - `Build` -- compile only changed units (default DCC behavior)
 - `Rebuild` -- force recompilation of all units (`-B` flag)
 
-Note: `Clean` and `Rebuild` are not available for DCC builds.  To clean DCC output,
+Note: `Clean` is not available for DCC builds.  To clean DCC output,
 delete the DCU output directory manually before invoking a `Rebuild`.
 
 ## -Verbosity
@@ -214,7 +214,7 @@ Example:
 
 ```
 -UnitSearchPath @('C:\Libs\A', 'C:\Libs\B')
- ```
+```
 
 ## -IncludePath
 
@@ -351,6 +351,9 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `includePath`    | string[] | Value of `-IncludePath`; `$null` when not supplied            |
 | `exitCode`       | int      | DCC process exit code                                         |
 | `success`        | bool     | `$true` when `exitCode` is 0                                  |
+| `scriptVersion`  | string   | Version of the `delphi-dccbuild.ps1` script                   |
+| `define`         | string[] | Value of `-Define`; empty array when not supplied             |
+| `namespace`      | string[] | Value of `-Namespace`; `$null` when not supplied              |
 | `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
 
 On errors before the compiler is invoked (exit codes 2, 3, 4) no result
