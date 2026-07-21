@@ -50,6 +50,12 @@ NOTES
   Use it on portable/trimmed toolchains whose cfg carries stale library paths;
   units and includes then resolve only from the paths this script supplies.
 
+  -ResourcePath adds resource compiler search paths (-R).  -BplOutputDir,
+  -DcpOutputDir, and -BpiOutputDir set the package output directories (-LE,
+  -LN, -NB).  -LinkPackage links runtime packages (-LU) and is strictly opt-in:
+  it makes the output depend on rtlNNN.bpl / vclNNN.bpl at load time, so the
+  default remains statically linked so standalone exes keep working.
+
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
 
@@ -122,6 +128,27 @@ param(
   # with semicolons and passed as a single -D argument.
   [string[]]$Define = @(),
 
+  # Additional resource search paths (-R flag).  Multiple paths are joined
+  # with semicolons and passed as a single -R argument.
+  [string[]]$ResourcePath = @(),
+
+  # Output directory for compiled runtime packages, .bpl (-LE flag).
+  [string]$BplOutputDir,
+
+  # Output directory for package .dcp files (-LN flag).
+  [string]$DcpOutputDir,
+
+  # Output directory for package .bpi files (-NB flag).
+  [string]$BpiOutputDir,
+
+  # Runtime packages to link against (-LU flag).  Multiple entries are joined
+  # with semicolons and passed as a single -LU argument.  STRICTLY OPT-IN:
+  # linking runtime packages makes the output depend on rtlNNN.bpl / vclNNN.bpl
+  # at load time.  Omit (the default) to statically link so standalone exes keep
+  # working -- an exe built with -LUrtl fails to load (0xC0000135) when
+  # rtlNNN.bpl is absent on the target.
+  [string[]]$LinkPackage = @(),
+
   # Skip loading dcc32.cfg (--no-config).  By default DCC auto-loads
   # <RootDir>\bin\dcc32.cfg, which on portable/trimmed toolchains can carry
   # stale absolute or $(BDS)-relative library paths that silently inject wrong
@@ -143,7 +170,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.2'
+$script:Version = '0.3.3'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -283,6 +310,11 @@ function Invoke-DccProject {
     [string[]]$IncludePath    = @(),
     [string[]]$Namespace      = @(),
     [string[]]$Define         = @(),
+    [string[]]$ResourcePath   = @(),
+    [string]$BplOutputDir,
+    [string]$DcpOutputDir,
+    [string]$BpiOutputDir,
+    [string[]]$LinkPackage    = @(),
     [switch]$NoConfig,
     [switch]$ShowOutput
   )
@@ -306,15 +338,24 @@ function Invoke-DccProject {
   if (-not [string]::IsNullOrWhiteSpace($ExeOutputDir)) { $dccArgs += "-E$ExeOutputDir" }
   if (-not [string]::IsNullOrWhiteSpace($DcuOutputDir)) { $dccArgs += "-N0$DcuOutputDir" }
 
+  # Package output directories: .bpl (-LE), .dcp (-LN), .bpi (-NB)
+  if (-not [string]::IsNullOrWhiteSpace($BplOutputDir)) { $dccArgs += "-LE$BplOutputDir" }
+  if (-not [string]::IsNullOrWhiteSpace($DcpOutputDir)) { $dccArgs += "-LN$DcpOutputDir" }
+  if (-not [string]::IsNullOrWhiteSpace($BpiOutputDir)) { $dccArgs += "-NB$BpiOutputDir" }
+
   # Search paths: multiple entries joined with semicolons into a single flag
   if ($UnitSearchPath.Count -gt 0) { $dccArgs += "-U$($UnitSearchPath -join ';')" }
   if ($IncludePath.Count -gt 0)    { $dccArgs += "-I$($IncludePath -join ';')" }
+  if ($ResourcePath.Count -gt 0)   { $dccArgs += "-R$($ResourcePath -join ';')" }
 
   # Unit scope names: multiple entries joined with semicolons into a single -NS flag
   if ($Namespace.Count -gt 0) { $dccArgs += "-NS$($Namespace -join ';')" }
 
   # Additional defines: multiple entries joined with semicolons into a single -D flag
   if ($Define.Count -gt 0) { $dccArgs += "-D$($Define -join ';')" }
+
+  # Runtime packages to link (opt-in): joined with semicolons into a single -LU flag
+  if ($LinkPackage.Count -gt 0) { $dccArgs += "-LU$($LinkPackage -join ';')" }
 
   return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -ShowOutput:$ShowOutput
 }
@@ -372,6 +413,11 @@ try {
     -IncludePath     $IncludePath `
     -Namespace       $Namespace `
     -Define          $Define `
+    -ResourcePath    $ResourcePath `
+    -BplOutputDir    $BplOutputDir `
+    -DcpOutputDir    $DcpOutputDir `
+    -BpiOutputDir    $BpiOutputDir `
+    -LinkPackage     $LinkPackage `
     -NoConfig:$NoConfig `
     -ShowOutput:$ShowOutput
 
@@ -390,6 +436,11 @@ try {
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }
     includePath    = if ($IncludePath.Count    -eq 0) { $null } else { $IncludePath }
     namespace      = if ($Namespace.Count      -eq 0) { $null } else { $Namespace }
+    resourcePath   = if ($ResourcePath.Count   -eq 0) { $null } else { $ResourcePath }
+    bplOutputDir   = if ([string]::IsNullOrWhiteSpace($BplOutputDir)) { $null } else { $BplOutputDir }
+    dcpOutputDir   = if ([string]::IsNullOrWhiteSpace($DcpOutputDir)) { $null } else { $DcpOutputDir }
+    bpiOutputDir   = if ([string]::IsNullOrWhiteSpace($BpiOutputDir)) { $null } else { $BpiOutputDir }
+    linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
     noConfig       = [bool]$NoConfig
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)

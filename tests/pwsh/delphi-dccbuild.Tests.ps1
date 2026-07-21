@@ -54,6 +54,9 @@
     Define single entry adds a -D flag with that value.
     Define multiple entries are joined with semicolons into a single -D flag.
     NoConfig switch adds --no-config; omitted adds nothing.
+    ResourcePath single/multiple adds -R (semicolon-joined); omitted adds nothing.
+    BplOutputDir/DcpOutputDir/BpiOutputDir add -LE/-LN/-NB; omitted add nothing.
+    LinkPackage single/multiple adds -LU (semicolon-joined); omitted adds nothing (static default).
 
   Describe 8 - Main flow (via Invoke-ToolProcess, no DCC calls):
     Exits 3 when no rootDir is provided (no pipeline, no -RootDir).
@@ -879,6 +882,251 @@ Describe 'Invoke-DccProject' {
 
     It 'no argument equals --no-config' {
       $script:capturedArgs | Should -Not -Contain '--no-config'
+    }
+
+  }
+
+  Context 'ResourcePath single entry adds -R flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath  'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile   'C:\Projects\MyApp.dpr' `
+        -Config        'Debug' `
+        -Target        'Build' `
+        -Verbosity     'normal' `
+        -ResourcePath  @('C:\Res\Icons')
+    }
+
+    It 'includes the -R flag with the single path' {
+      ($script:capturedArgs -contains '-RC:\Res\Icons') | Should -Be $true
+    }
+
+  }
+
+  Context 'ResourcePath multiple entries are joined with semicolons' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath  'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile   'C:\Projects\MyApp.dpr' `
+        -Config        'Debug' `
+        -Target        'Build' `
+        -Verbosity     'normal' `
+        -ResourcePath  @('C:\Res\A', 'C:\Res\B')
+    }
+
+    It 'passes semicolon-separated -R argument' {
+      ($script:capturedArgs -contains '-RC:\Res\A;C:\Res\B') | Should -Be $true
+    }
+
+  }
+
+  Context 'ResourcePath omitted adds no -R flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with -R' {
+      $script:capturedArgs | Where-Object { $_ -like '-R*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'BplOutputDir adds -LE flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyPkg.dpk' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -BplOutputDir 'C:\Build\bpl'
+    }
+
+    It 'includes the -LE flag with the BplOutputDir value' {
+      ($script:capturedArgs -contains '-LEC:\Build\bpl') | Should -Be $true
+    }
+
+  }
+
+  Context 'DcpOutputDir adds -LN flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyPkg.dpk' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -DcpOutputDir 'C:\Build\dcp'
+    }
+
+    It 'includes the -LN flag with the DcpOutputDir value' {
+      ($script:capturedArgs -contains '-LNC:\Build\dcp') | Should -Be $true
+    }
+
+  }
+
+  Context 'BpiOutputDir adds -NB flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyPkg.dpk' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -BpiOutputDir 'C:\Build\bpi'
+    }
+
+    It 'includes the -NB flag with the BpiOutputDir value' {
+      ($script:capturedArgs -contains '-NBC:\Build\bpi') | Should -Be $true
+    }
+
+  }
+
+  Context 'package output dirs omitted add no -LE/-LN/-NB flags' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with -LE' {
+      $script:capturedArgs | Where-Object { $_ -like '-LE*' } | Should -BeNullOrEmpty
+    }
+
+    It 'no argument starts with -LN' {
+      $script:capturedArgs | Where-Object { $_ -like '-LN*' } | Should -BeNullOrEmpty
+    }
+
+    It 'no argument starts with -NB' {
+      $script:capturedArgs | Where-Object { $_ -like '-NB*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'LinkPackage single entry adds -LU flag' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -LinkPackage  @('rtl')
+    }
+
+    It 'includes -LUrtl' {
+      $script:capturedArgs | Should -Contain '-LUrtl'
+    }
+
+  }
+
+  Context 'LinkPackage multiple entries are joined with semicolons' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -LinkPackage  @('rtl', 'vcl')
+    }
+
+    It 'includes -LUrtl;vcl as a single argument' {
+      $script:capturedArgs | Should -Contain '-LUrtl;vcl'
+    }
+
+  }
+
+  Context 'LinkPackage omitted adds no -LU flag (static link is the default)' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with -LU' {
+      $script:capturedArgs | Where-Object { $_ -like '-LU*' } | Should -BeNullOrEmpty
     }
 
   }

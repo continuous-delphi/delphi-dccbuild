@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Add resource and package switches: `-ResourcePath` (`-R`), `-BplOutputDir`
+  (`-LE`), `-DcpOutputDir` (`-LN`), `-BpiOutputDir` (`-NB`), and `-LinkPackage`
+  (`-LU`).  `-LinkPackage` is strictly opt-in so the static-link default keeps
+  standalone exes working
+  [#12](https://github.com/continuous-delphi/delphi-dccbuild/issues/12)
+
 - Add `-NoConfig` switch that passes `--no-config` to DCC so it does not
   auto-load `<RootDir>\bin\dcc32.cfg`; enables reproducible builds on portable
   or trimmed toolchains whose `.cfg` carries stale library paths

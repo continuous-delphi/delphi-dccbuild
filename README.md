@@ -298,6 +298,78 @@ delphi-inspect.ps1 -DetectLatest -Platform Win32 -BuildSystem DCC |
     delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -Define CI, MYFLAG
 ```
 
+## -ResourcePath
+
+```text
+-ResourcePath <string[]>
+```
+
+Additional resource compiler search paths, passed to DCC via `-R`.  Accepts an
+array; multiple entries are joined with semicolons into a single `-R` argument:
+
+```text
+-RC:\Res\A;C:\Res\B
+```
+
+When omitted (or an empty array), no `-R` argument is added.  The result
+object's `.resourcePath` is `$null` when no paths are supplied.
+
+## -BplOutputDir / -DcpOutputDir / -BpiOutputDir
+
+```text
+-BplOutputDir <string>
+-DcpOutputDir <string>
+-BpiOutputDir <string>
+```
+
+Output directories for the artifacts produced when building a Delphi package
+(`.dpk`):
+
+| Parameter       | DCC flag | Artifact                        |
+|-----------------|----------|---------------------------------|
+| `-BplOutputDir` | `-LE`    | compiled runtime package `.bpl` |
+| `-DcpOutputDir` | `-LN`    | package symbol file `.dcp`      |
+| `-BpiOutputDir` | `-NB`    | package import file `.bpi`      |
+
+Each is emitted only when supplied; omitting a parameter omits its flag.  The
+result object exposes `.bplOutputDir`, `.dcpOutputDir`, and `.bpiOutputDir`
+(each `$null` when not supplied).
+
+## -LinkPackage
+
+```text
+-LinkPackage <string[]>
+```
+
+Runtime packages to link against, passed to DCC via `-LU`.  Accepts an array;
+multiple entries are joined with semicolons into a single `-LU` argument:
+
+```text
+-LUrtl;vcl
+```
+
+**Strictly opt-in.**  Linking runtime packages makes the output depend on
+`rtlNNN.bpl` / `vclNNN.bpl` being present at load time.  When omitted (the
+default), the output is statically linked so standalone executables keep
+working -- an exe built with `-LUrtl` fails to load with `0xC0000135` when
+`rtlNNN.bpl` is not on the target machine.  Only supply `-LinkPackage` when
+you intend to deploy the matching `.bpl` files alongside the output.
+
+When omitted (or an empty array), no `-LU` argument is added.  The result
+object's `.linkPackage` is `$null` when no packages are supplied.
+
+Example (build a package and consume it):
+
+```powershell
+# Build a runtime package, placing outputs in dedicated dirs
+delphi-dccbuild.ps1 -ProjectFile .\pkg\MyLib.dpk -RootDir $root `
+    -BplOutputDir .\out\bpl -DcpOutputDir .\out\dcp
+
+# Build an exe that links that runtime package (deploy MyLib.bpl with it)
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
+    -UnitSearchPath .\out\dcp -LinkPackage rtl, vcl, MyLib
+```
+
 ## -NoConfig   (switch)
 
 ```text
@@ -378,6 +450,11 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `scriptVersion`  | string   | Version of the `delphi-dccbuild.ps1` script                   |
 | `define`         | string[] | Value of `-Define`; empty array when not supplied             |
 | `namespace`      | string[] | Value of `-Namespace`; `$null` when not supplied              |
+| `resourcePath`   | string[] | Value of `-ResourcePath`; `$null` when not supplied           |
+| `bplOutputDir`   | string   | Value of `-BplOutputDir`; `$null` when not supplied           |
+| `dcpOutputDir`   | string   | Value of `-DcpOutputDir`; `$null` when not supplied           |
+| `bpiOutputDir`   | string   | Value of `-BpiOutputDir`; `$null` when not supplied           |
+| `linkPackage`    | string[] | Value of `-LinkPackage`; `$null` when not supplied            |
 | `noConfig`       | bool     | `$true` when `-NoConfig` was set (dcc32.cfg skipped)          |
 | `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
 

@@ -34,6 +34,7 @@ Opt-in; default behavior (cfg auto-loaded) is unchanged.
 ---
 Title: Add resource/package output switches (-R, -LE, -LN, -NB, -LU)
 Issue: #12
+Status: closed
 Labels: enhancement
 Body:
 ## Problem
