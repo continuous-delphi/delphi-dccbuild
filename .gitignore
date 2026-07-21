@@ -1,2 +1,5 @@
 # PowerShell test output
 tests/pwsh/results/*.xml
+
+# Session commit action scripts (persist on disk after being run)
+tools/commit*.bat

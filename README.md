@@ -298,6 +298,30 @@ delphi-inspect.ps1 -DetectLatest -Platform Win32 -BuildSystem DCC |
     delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -Define CI, MYFLAG
 ```
 
+## -NoConfig   (switch)
+
+```text
+-NoConfig
+```
+
+When set, `--no-config` is passed to DCC so it does **not** auto-load
+`<RootDir>\bin\dcc32.cfg`.  On portable or trimmed toolchains that `.cfg`
+frequently carries stale absolute library paths (or `$(BDS)`-relative paths
+captured on another machine), which silently injects wrong or duplicate
+`-U` / `-I` entries.  With `-NoConfig`, units and includes resolve only from
+the paths this script and its parameters supply.
+
+When not set (default), DCC reads `dcc32.cfg` as usual -- behavior is
+unchanged from prior versions.  The result object's `.noConfig` property
+reflects whether the switch was set.
+
+Example:
+
+```powershell
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root -NoConfig `
+    -Namespace System, Vcl -UnitSearchPath 'C:\Libs\A', 'C:\Libs\B'
+```
+
 ## -ShowOutput   (switch)
 
 ```text
@@ -354,6 +378,7 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `scriptVersion`  | string   | Version of the `delphi-dccbuild.ps1` script                   |
 | `define`         | string[] | Value of `-Define`; empty array when not supplied             |
 | `namespace`      | string[] | Value of `-Namespace`; `$null` when not supplied              |
+| `noConfig`       | bool     | `$true` when `-NoConfig` was set (dcc32.cfg skipped)          |
 | `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
 
 On errors before the compiler is invoked (exit codes 2, 3, 4) no result

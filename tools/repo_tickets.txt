@@ -4,3 +4,124 @@
 # dev-automation-tooling script & document reference: C:\code\dev-automation-tooling
 
 ---
+Title: Add -NoConfig switch (pass --no-config to dcc32)
+Issue: #11
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+The script never passes `--no-config`, so `dcc32` auto-loads
+`<RootDir>\bin\dcc32.cfg`. In portable/trimmed toolchains that cfg frequently
+carries stale absolute library paths (or `$(BDS)`-relative paths captured from
+another machine), which silently injects wrong or duplicate `-U`/`-I` entries.
+The legacy batch system (`rad-buildfiles-shared\DelphiBuild.bat`) passes
+`--no-config` and supplies every path explicitly, which is why it is
+reproducible across machines.
+
+## Proposed
+
+A `-NoConfig` switch that appends `--no-config` to the dcc32 command line.
+Opt-in; default behavior (cfg auto-loaded) is unchanged.
+
+## Acceptance criteria
+
+- [ ] `-NoConfig` appends `--no-config` to the dcc32 invocation
+- [ ] With `-NoConfig`, dcc32 does not read `dcc32.cfg`
+- [ ] Units/includes resolve only from the paths the script and its params provide
+- [ ] Omitting the switch preserves current default (cfg auto-loaded)
+
+---
+Title: Add resource/package output switches (-R, -LE, -LN, -NB, -LU)
+Issue: #12
+Labels: enhancement
+Body:
+## Problem
+
+The script exposes `-U`/`-I`/`-NS`/`-D`/`-E` and a DCU output dir, but not:
+`-R` (resource dirs), `-LE` (.bpl output), `-LN` (.dcp output), `-NB` (.bpi
+output), `-LU` (used runtime packages). Projects that reference resource
+directories or that build/consume packages cannot be built today.
+
+## Proposed params
+
+- `-ResourcePath <string[]>`  -> `-R<;-joined>`
+- `-BplOutputDir  <string>`   -> `-LE<dir>`
+- `-DcpOutputDir  <string>`   -> `-LN<dir>`
+- `-BpiOutputDir  <string>`   -> `-NB<dir>`
+- `-LinkPackage   <string[]>` -> `-LU<;-joined>` (used runtime packages)
+
+## Important flip side of -LU
+
+Linking runtime packages makes the output depend on `rtlNNN.bpl` /
+`vclNNN.bpl` at load time. The current default (no `-LU`, i.e. statically
+linked) MUST remain the default so standalone exes keep working. Observed
+concretely: an exe built with `-LUrtl` failed to load with `0xC0000135`
+because `rtl140.bpl` was not on the target. `-LinkPackage` must be strictly
+opt-in.
+
+## Acceptance criteria
+
+- [ ] Each param maps to the correct dcc32 switch
+- [ ] Omitting a param omits the corresponding switch
+- [ ] Multiple paths/packages are `;`-joined into a single switch
+- [ ] Static (default, no `-LU`) standalone exes still build and load
+- [ ] Package-using exes build with `-LinkPackage`
+
+---
+Title: Add -ExtraArgs generic dcc32 pass-through
+Issue: #13
+Labels: enhancement
+Body:
+## Problem
+
+There is no escape hatch for switches the script does not model -- e.g. the
+code-gen switches the batch uses (`-$D0 -$L- -$C- -$Y-`), map-file options,
+`-JL`, `-V*`, etc.
+
+## Proposed
+
+`-ExtraArgs <string[]>` appended verbatim, after the modeled switches and
+before the project file, to the dcc32 command line.
+
+## Acceptance criteria
+
+- [ ] Each array element is passed through as-is (array boundaries preserved,
+      no re-escaping or splitting)
+- [ ] Positioned after the modeled switches and before the project file
+- [ ] Nothing is dropped
+
+---
+Title: Add -SkipRsvars mode (skip rsvars, honor caller-preset env)
+Issue: #14
+Labels: enhancement
+Body:
+## Problem
+
+The script hard-requires `<RootDir>\bin\rsvars.bat` (exit 3 if missing) and
+sources it. Two failure modes:
+
+- (a) The oldest toolchains (Delphi 2 / 7 / 2005) have no `rsvars.bat` at all
+  -- it predates them -- so they cannot be built even though `bin\dcc32.exe`
+  is present.
+- (b) A caller may want to set `BDS` / `PATH` / library env itself (exactly
+  what `_SetDelphiBuildPaths.bat` does) and NOT have rsvars mutate it.
+
+## Proposed
+
+A `-SkipRsvars` switch that bypasses the rsvars requirement and sourcing, and
+runs `dcc32.exe` directly using the current process environment (pre-set by
+the caller) plus the explicit `-U`/`-I` paths. Combined with `-NoConfig` and
+the resource/package/extra-args switches this reproduces the fully-explicit,
+self-contained invocation the batch system relies on.
+
+## Acceptance criteria
+
+- [ ] With `-SkipRsvars`, a `RootDir` that has `bin\dcc32.exe` but no
+      `bin\rsvars.bat` builds successfully
+- [ ] rsvars is never called when `-SkipRsvars` is set
+- [ ] The caller's pre-set environment is honored (not overwritten)
+- [ ] Default behavior (rsvars required and sourced) is unchanged when the
+      switch is omitted
+
+---

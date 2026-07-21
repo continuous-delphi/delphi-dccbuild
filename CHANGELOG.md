@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Add `-NoConfig` switch that passes `--no-config` to DCC so it does not
+  auto-load `<RootDir>\bin\dcc32.cfg`; enables reproducible builds on portable
+  or trimmed toolchains whose `.cfg` carries stale library paths
+  [#11](https://github.com/continuous-delphi/delphi-dccbuild/issues/11)
+
 - Add `WinARM64EC` as a valid DCC platform value, mapped to
   `bin64\dccarm64ec.exe`, with focused tests for compiler name, bin folder,
   and compiler path resolution

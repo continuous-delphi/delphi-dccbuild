@@ -46,6 +46,10 @@ NOTES
   values are Debug and Release; the define is uppercased automatically.
   Existing defines from the project's .cfg file are not affected.
 
+  -NoConfig passes --no-config so DCC does not auto-load <RootDir>\bin\dcc32.cfg.
+  Use it on portable/trimmed toolchains whose cfg carries stale library paths;
+  units and includes then resolve only from the paths this script supplies.
+
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
 
@@ -118,6 +122,14 @@ param(
   # with semicolons and passed as a single -D argument.
   [string[]]$Define = @(),
 
+  # Skip loading dcc32.cfg (--no-config).  By default DCC auto-loads
+  # <RootDir>\bin\dcc32.cfg, which on portable/trimmed toolchains can carry
+  # stale absolute or $(BDS)-relative library paths that silently inject wrong
+  # or duplicate -U/-I entries.  With -NoConfig, unit and include paths resolve
+  # only from what this script and its params supply.  Opt-in; omitting it
+  # preserves the current default (cfg auto-loaded).
+  [switch]$NoConfig,
+
   [switch]$ShowOutput
 )
 
@@ -131,7 +143,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.1'
+$script:Version = '0.3.2'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -271,10 +283,14 @@ function Invoke-DccProject {
     [string[]]$IncludePath    = @(),
     [string[]]$Namespace      = @(),
     [string[]]$Define         = @(),
+    [switch]$NoConfig,
     [switch]$ShowOutput
   )
 
   $dccArgs = @($ProjectFile)
+
+  # Skip dcc32.cfg so only explicitly supplied paths are used (--no-config)
+  if ($NoConfig) { $dccArgs += '--no-config' }
 
   # Rebuild: force recompilation of all units
   if ($Target -eq 'Rebuild') { $dccArgs += '-B' }
@@ -356,6 +372,7 @@ try {
     -IncludePath     $IncludePath `
     -Namespace       $Namespace `
     -Define          $Define `
+    -NoConfig:$NoConfig `
     -ShowOutput:$ShowOutput
 
   $resultObj = [pscustomobject]@{
@@ -373,6 +390,7 @@ try {
     unitSearchPath = if ($UnitSearchPath.Count -eq 0) { $null } else { $UnitSearchPath }
     includePath    = if ($IncludePath.Count    -eq 0) { $null } else { $IncludePath }
     namespace      = if ($Namespace.Count      -eq 0) { $null } else { $Namespace }
+    noConfig       = [bool]$NoConfig
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output

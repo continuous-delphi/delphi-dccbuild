@@ -53,6 +53,7 @@
     Define omitted adds no extra -D argument beyond the config define.
     Define single entry adds a -D flag with that value.
     Define multiple entries are joined with semicolons into a single -D flag.
+    NoConfig switch adds --no-config; omitted adds nothing.
 
   Describe 8 - Main flow (via Invoke-ToolProcess, no DCC calls):
     Exits 3 when no rootDir is provided (no pipeline, no -RootDir).
@@ -831,6 +832,53 @@ Describe 'Invoke-DccProject' {
 
     It 'includes -DMYFLAG;USE_JEDI_JCL as a single argument' {
       $script:capturedArgs | Should -Contain '-DMYFLAG;USE_JEDI_JCL'
+    }
+
+  }
+
+  Context 'NoConfig switch adds --no-config' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -NoConfig
+    }
+
+    It 'includes the --no-config argument' {
+      $script:capturedArgs | Should -Contain '--no-config'
+    }
+
+  }
+
+  Context 'NoConfig omitted adds no --no-config' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument equals --no-config' {
+      $script:capturedArgs | Should -Not -Contain '--no-config'
     }
 
   }
