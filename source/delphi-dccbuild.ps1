@@ -60,6 +60,12 @@ NOTES
   modeled switches (no splitting or re-escaping) for dcc32 options this script
   does not model (e.g. -$D0, -$L-, -JL, -V*).
 
+  -SkipRsvars bypasses the rsvars.bat requirement and sourcing.  The compiler
+  then runs against the current process environment (pre-set by the caller and
+  left untouched).  Use it for toolchains that predate rsvars.bat (Delphi
+  2/7/2005) or when the caller manages BDS/PATH itself.  rsvarsPath is null in
+  the result object when this switch is set.
+
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
 
@@ -74,7 +80,7 @@ NOTES
     0  success
     1  unexpected error
     2  reserved (invalid arguments)
-    3  rootDir missing/empty, directory not found, rsvars.bat absent, or compiler exe not found
+    3  rootDir missing/empty, directory not found, rsvars.bat absent (unless -SkipRsvars), or compiler exe not found
     4  project file not found
     5  DCC compiler failed (non-zero exit code)
 #>
@@ -170,6 +176,16 @@ param(
   # "after the modeled switches" means at the end of the argument list.
   [string[]]$ExtraArgs = @(),
 
+  # Skip the rsvars.bat requirement and sourcing.  By default the script
+  # requires <RootDir>\bin\rsvars.bat and sources it to set BDS / PATH and
+  # related variables.  With -SkipRsvars, rsvars is neither required nor
+  # called: the compiler is run directly against the current process
+  # environment, which the caller is expected to have pre-set.  Enables the
+  # oldest toolchains (Delphi 2 / 7 / 2005) that predate rsvars.bat, and
+  # caller-managed environments.  Combine with -NoConfig and explicit -U/-I
+  # paths for a fully self-contained, reproducible build.
+  [switch]$SkipRsvars,
+
   [switch]$ShowOutput
 )
 
@@ -183,7 +199,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.4'
+$script:Version = '0.3.6'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -399,10 +415,16 @@ try {
     exit $ExitRootDirError
   }
 
-  $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
-  if (-not (Test-Path -LiteralPath $rsvarsPath)) {
-    Write-Error "rsvars.bat not found: $rsvarsPath" -ErrorAction Continue
-    exit $ExitRootDirError
+  # rsvars.bat is required and sourced unless -SkipRsvars bypasses it.
+  if ($SkipRsvars) {
+    $rsvarsPath = $null
+  }
+  else {
+    $rsvarsPath = Get-RsvarsPath -RootDir $resolvedRootDir
+    if (-not (Test-Path -LiteralPath $rsvarsPath)) {
+      Write-Error "rsvars.bat not found: $rsvarsPath" -ErrorAction Continue
+      exit $ExitRootDirError
+    }
   }
 
   $compilerPath = Get-CompilerPath -RootDir $resolvedRootDir -Platform $Platform
@@ -417,7 +439,12 @@ try {
     exit $ExitProjectNotFound
   }
 
-  Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  # Source rsvars into the process environment unless the caller opted out.
+  # With -SkipRsvars the current environment (pre-set by the caller) is used
+  # as-is and left untouched.
+  if (-not $SkipRsvars) {
+    Invoke-RsvarsEnvironment -RsvarsPath $rsvarsPath
+  }
 
   $buildResult = Invoke-DccProject `
     -CompilerPath    $compilerPath `
@@ -462,6 +489,7 @@ try {
     linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
     noConfig       = [bool]$NoConfig
     extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
+    skipRsvars     = [bool]$SkipRsvars
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output

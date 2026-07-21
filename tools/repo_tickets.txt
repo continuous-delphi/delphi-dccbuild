@@ -96,6 +96,7 @@ before the project file, to the dcc32 command line.
 ---
 Title: Add -SkipRsvars mode (skip rsvars, honor caller-preset env)
 Issue: #14
+Status: closed
 Labels: enhancement
 Body:
 ## Problem

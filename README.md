@@ -422,6 +422,42 @@ delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
     -ExtraArgs '-$D0', '-$L-', '-$C-', '-$Y-', '-GD'
 ```
 
+## -SkipRsvars   (switch)
+
+```text
+-SkipRsvars
+```
+
+By default the script requires `<RootDir>\bin\rsvars.bat` (exit code 3 if
+missing) and sources it to set `BDS`, `PATH`, and related variables before
+invoking the compiler.  When `-SkipRsvars` is set:
+
+- `rsvars.bat` is **not** required -- its absence no longer fails the build.
+- `rsvars.bat` is **never** sourced.
+- The compiler runs against the **current process environment**, which the
+  caller is expected to have pre-set (and which the script leaves untouched).
+
+This unblocks two scenarios:
+
+- **Toolchains that predate `rsvars.bat`** (Delphi 2 / 7 / 2005) -- these have
+  `bin\dcc32.exe` but no `rsvars.bat`, so they could not be built before.
+- **Caller-managed environments** -- when a wrapper (e.g. a
+  `_SetDelphiBuildPaths.bat`-style script) has already set `BDS` / `PATH` /
+  library paths and must not have rsvars mutate them.
+
+The compiler executable is still required (a missing `dcc32.exe` exits 3).
+Combine `-SkipRsvars` with `-NoConfig` and explicit `-UnitSearchPath` /
+`-IncludePath` for a fully self-contained, reproducible invocation.  The
+result object's `.skipRsvars` is `$true` when set, and `.rsvarsPath` is `$null`.
+
+Example (old toolchain, fully explicit environment):
+
+```powershell
+# Caller sets BDS / PATH beforehand, then:
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir 'G:\rad-buildfiles-d7' `
+    -SkipRsvars -NoConfig -UnitSearchPath 'G:\rad-buildfiles-d7\lib'
+```
+
 ## -ShowOutput   (switch)
 
 ```text
@@ -467,7 +503,7 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `config`         | string   | Config value used (e.g. `Debug`)                              |
 | `target`         | string   | Target used (e.g. `Build`)                                    |
 | `rootDir`        | string   | Resolved Delphi installation root                             |
-| `rsvarsPath`     | string   | Derived path to `rsvars.bat`                                  |
+| `rsvarsPath`     | string   | Derived path to `rsvars.bat`; `$null` when `-SkipRsvars`      |
 | `compilerPath`   | string   | Full path to the compiler executable                          |
 | `exeOutputDir`   | string   | Value of `-ExeOutputDir`; `$null` when not supplied           |
 | `dcuOutputDir`   | string   | Value of `-DcuOutputDir`; `$null` when not supplied           |
@@ -485,6 +521,7 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `linkPackage`    | string[] | Value of `-LinkPackage`; `$null` when not supplied            |
 | `noConfig`       | bool     | `$true` when `-NoConfig` was set (dcc32.cfg skipped)          |
 | `extraArgs`      | string[] | Value of `-ExtraArgs`; `$null` when not supplied              |
+| `skipRsvars`     | bool     | `$true` when `-SkipRsvars` was set (rsvars bypassed)          |
 | `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
 
 On errors before the compiler is invoked (exit codes 2, 3, 4) no result
@@ -703,7 +740,7 @@ fail with `F1027 Unit not found: 'System.pas'`.
 |----------------------|------------------------------|---------------------------------|
 | Project file type    | `.dpr`                       | `.dproj`                        |
 | Build system         | `dcc*.exe`                   | `msbuild.exe`                   |
-| Environment setup    | Sources `rsvars.bat`         | Sources `rsvars.bat`            |
+| Environment setup    | Sources `rsvars.bat` (or `-SkipRsvars`) | Sources `rsvars.bat`  |
 | Config parameter     | Added as define (`-DDEBUG`)  | Passed as `/p:Config=Debug`     |
 | Target: Rebuild      | `-B` flag                    | `/t:Rebuild`                    |
 | Target: Clean        | Not available                | `/t:Clean`                      |

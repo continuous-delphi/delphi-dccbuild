@@ -65,6 +65,8 @@
     Exits 3 when rootDir exists but rsvars.bat is absent.
     Exits 3 when rsvars.bat exists but compiler exe is absent.
     Exits 4 when rsvars.bat and compiler exist but project file does not.
+    -SkipRsvars bypasses the rsvars.bat requirement (exit 4, not 3; no rsvars in stderr).
+    -SkipRsvars still requires the compiler exe (exit 3 citing dcc32).
 #>
 
 Describe 'Resolve-RootDir' {
@@ -1411,6 +1413,74 @@ Describe 'Main flow -- pre-compiler validation (no DCC invoked)' {
 
     It 'stderr mentions the missing project file' {
       $script:result.StdErr -join ' ' | Should -Match 'not found'
+    }
+
+  }
+
+  Context '-SkipRsvars bypasses the rsvars.bat requirement' {
+
+    BeforeAll {
+      # Seed dcc32.exe but deliberately NO rsvars.bat.  Without -SkipRsvars this
+      # would exit 3 (rsvars absent); with it, validation proceeds past rsvars
+      # to the project-file check, so a missing project file yields exit 4.
+      $script:tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'delphi-dccbuild-skiprsvars-test'
+      $script:tempBin  = Join-Path $script:tempRoot 'bin'
+      $null = New-Item -ItemType Directory -Path $script:tempBin -Force
+      $null = New-Item -ItemType File -Path (Join-Path $script:tempBin 'dcc32.exe') -Force
+
+      $script:result = Invoke-ToolProcess -ScriptPath $script:scriptPath -Arguments @(
+        '-ProjectFile', 'C:\Fake\DoesNotExist.dpr',
+        '-RootDir',     $script:tempRoot,
+        '-Platform',    'Win32',
+        '-SkipRsvars'
+      )
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'exit code is 4 (reached the project-file check, not blocked on rsvars)' {
+      $script:result.ExitCode | Should -Be 4
+    }
+
+    It 'stderr does not mention rsvars.bat' {
+      $script:result.StdErr -join ' ' | Should -Not -Match 'rsvars\.bat'
+    }
+
+    It 'stderr mentions the missing project file' {
+      $script:result.StdErr -join ' ' | Should -Match 'not found'
+    }
+
+  }
+
+  Context '-SkipRsvars still requires the compiler exe' {
+
+    BeforeAll {
+      # No rsvars.bat and no dcc32.exe.  -SkipRsvars bypasses rsvars but the
+      # compiler must still exist, so this exits 3 citing the compiler.
+      $script:tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'delphi-dccbuild-skiprsvars-nocc-test'
+      $script:tempBin  = Join-Path $script:tempRoot 'bin'
+      $null = New-Item -ItemType Directory -Path $script:tempBin -Force
+
+      $script:result = Invoke-ToolProcess -ScriptPath $script:scriptPath -Arguments @(
+        '-ProjectFile', 'C:\Fake\MyApp.dpr',
+        '-RootDir',     $script:tempRoot,
+        '-Platform',    'Win32',
+        '-SkipRsvars'
+      )
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'exit code is 3' {
+      $script:result.ExitCode | Should -Be 3
+    }
+
+    It 'stderr mentions the compiler name' {
+      $script:result.StdErr -join ' ' | Should -Match 'dcc32'
     }
 
   }

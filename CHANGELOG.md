@@ -4,12 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [0.3.6] - 2026-07-21
+
+- Add `-SkipRsvars` switch that bypasses the `rsvars.bat` requirement and
+  sourcing, running the compiler against the caller's pre-set environment;
+  unblocks toolchains that predate `rsvars.bat` (Delphi 2/7/2005) and
+  caller-managed environments.  The compiler exe is still required
+  [#14](https://github.com/continuous-delphi/delphi-dccbuild/issues/14)
+
+## [0.3.4] - 2026-07-21
 
 - Add `-ExtraArgs` escape hatch that appends arbitrary arguments verbatim
   after the modeled switches, for dcc32 options the script does not model
   (e.g. `-$D0`, `-$L-`, `-JL`, `-V*`); array boundaries and order preserved
   [#13](https://github.com/continuous-delphi/delphi-dccbuild/issues/13)
+
+## [0.3.3] - 2026-07-21
 
 - Add resource and package switches: `-ResourcePath` (`-R`), `-BplOutputDir`
   (`-LE`), `-DcpOutputDir` (`-LN`), `-BpiOutputDir` (`-NB`), and `-LinkPackage`
@@ -17,10 +27,14 @@ All notable changes to this project will be documented in this file.
   standalone exes working
   [#12](https://github.com/continuous-delphi/delphi-dccbuild/issues/12)
 
+## [0.3.2] - 2026-07-21
+
 - Add `-NoConfig` switch that passes `--no-config` to DCC so it does not
   auto-load `<RootDir>\bin\dcc32.cfg`; enables reproducible builds on portable
   or trimmed toolchains whose `.cfg` carries stale library paths
   [#11](https://github.com/continuous-delphi/delphi-dccbuild/issues/11)
+
+## [0.3.1] - 2026-04-25
 
 - Add `WinARM64EC` as a valid DCC platform value, mapped to
   `bin64\dccarm64ec.exe`, with focused tests for compiler name, bin folder,
