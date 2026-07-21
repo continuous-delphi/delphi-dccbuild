@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.7] - 2026-07-21
+
+- Run the compiler from the project file's folder by default so relative
+  `uses ... in '..\..\Unit.pas'`, `{$I ..\defs.inc}`, and `{$R ..\app.res}`
+  references resolve as the project author intended (matching the legacy
+  `DelphiBuild.bat`).  Add `-WorkingDirectory` to override the default.
+  Relative output/search paths are anchored to the caller's original CWD so
+  they land where they did before, and the child process CWD is set via
+  `[Environment]::CurrentDirectory` so it works on Windows PowerShell 5.1
+  [#15](https://github.com/continuous-delphi/delphi-dccbuild/issues/15)
+
 ## [0.3.6] - 2026-07-21
 
 - Add `-SkipRsvars` switch that bypasses the `rsvars.bat` requirement and

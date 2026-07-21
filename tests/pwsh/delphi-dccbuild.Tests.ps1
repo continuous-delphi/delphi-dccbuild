@@ -67,6 +67,24 @@
     Exits 4 when rsvars.bat and compiler exist but project file does not.
     -SkipRsvars bypasses the rsvars.bat requirement (exit 4, not 3; no rsvars in stderr).
     -SkipRsvars still requires the compiler exe (exit 3 citing dcc32).
+
+  Describe 9 - Resolve-WorkingDirectory:
+    Defaults to the resolved project file's folder when WorkingDirectory empty/whitespace.
+    Returns an explicit absolute WorkingDirectory unchanged.
+    Resolves an explicit relative WorkingDirectory to absolute against the process CWD.
+
+  Describe 10 - Resolve-DccPath / Resolve-DccPaths:
+    Empty/whitespace passes through; absolute unchanged; relative resolved against process CWD.
+    Empty array -> empty array; multi-entry array resolves each entry.
+
+  Describe 11 - Invoke-DccProject working directory and relative-path anchoring:
+    WorkingDirectory is forwarded to Invoke-DccExe.
+    Relative -ExeOutputDir anchors to the caller CWD, not the project dir.
+
+  Describe 12 - Invoke-DccExe working directory (invokes cmd.exe to observe child CWD):
+    Child process runs in the requested working directory; [Environment]::CurrentDirectory restored.
+    Working directory restored even when the child exits non-zero.
+    Omitting WorkingDirectory leaves the process CWD untouched.
 #>
 
 Describe 'Resolve-RootDir' {
@@ -1481,6 +1499,256 @@ Describe 'Main flow -- pre-compiler validation (no DCC invoked)' {
 
     It 'stderr mentions the compiler name' {
       $script:result.StdErr -join ' ' | Should -Match 'dcc32'
+    }
+
+  }
+
+}
+
+Describe 'Resolve-WorkingDirectory' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  It 'defaults to the folder of the resolved project file when WorkingDirectory is empty' {
+    $proj = [System.IO.Path]::Combine('C:\', 'Projects', 'Sub', 'MyApp.dpr')
+    $result = Resolve-WorkingDirectory -WorkingDirectory '' -ProjectFile $proj
+    $result | Should -Be ([System.IO.Path]::Combine('C:\', 'Projects', 'Sub'))
+  }
+
+  It 'defaults to the project folder when WorkingDirectory is whitespace' {
+    $proj = [System.IO.Path]::Combine('C:\', 'Projects', 'Sub', 'MyApp.dpr')
+    $result = Resolve-WorkingDirectory -WorkingDirectory '   ' -ProjectFile $proj
+    $result | Should -Be ([System.IO.Path]::Combine('C:\', 'Projects', 'Sub'))
+  }
+
+  It 'returns an explicit absolute WorkingDirectory unchanged' {
+    $dir = [System.IO.Path]::Combine('C:\', 'Other', 'Work')
+    $proj = [System.IO.Path]::Combine('C:\', 'Projects', 'Sub', 'MyApp.dpr')
+    $result = Resolve-WorkingDirectory -WorkingDirectory $dir -ProjectFile $proj
+    $result | Should -Be $dir
+  }
+
+  It 'resolves an explicit relative WorkingDirectory to absolute against the process CWD' {
+    $anchor = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-wd-anchor')
+    $null = New-Item -ItemType Directory -Path $anchor -Force
+    $originalEnvCwd = [System.Environment]::CurrentDirectory
+    try {
+      [System.Environment]::CurrentDirectory = $anchor
+      $result = Resolve-WorkingDirectory -WorkingDirectory 'relsub' -ProjectFile 'C:\Projects\MyApp.dpr'
+      $result | Should -Be ([System.IO.Path]::Combine([System.IO.Path]::GetFullPath($anchor), 'relsub'))
+    }
+    finally {
+      [System.Environment]::CurrentDirectory = $originalEnvCwd
+      Remove-Item -LiteralPath $anchor -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+}
+
+Describe 'Resolve-DccPath / Resolve-DccPaths' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  It 'passes an empty string through unchanged' {
+    Resolve-DccPath -Path '' | Should -Be ''
+  }
+
+  It 'passes whitespace through unchanged' {
+    Resolve-DccPath -Path '   ' | Should -Be '   '
+  }
+
+  It 'returns an absolute path unchanged' {
+    $abs = [System.IO.Path]::Combine('C:\', 'Abs', 'Path')
+    Resolve-DccPath -Path $abs | Should -Be $abs
+  }
+
+  It 'resolves a relative path to absolute against the process CWD' {
+    $anchor = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-path-anchor')
+    $null = New-Item -ItemType Directory -Path $anchor -Force
+    $originalEnvCwd = [System.Environment]::CurrentDirectory
+    try {
+      [System.Environment]::CurrentDirectory = $anchor
+      Resolve-DccPath -Path 'out\bin' |
+        Should -Be ([System.IO.Path]::Combine([System.IO.Path]::GetFullPath($anchor), 'out', 'bin'))
+    }
+    finally {
+      [System.Environment]::CurrentDirectory = $originalEnvCwd
+      Remove-Item -LiteralPath $anchor -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  It 'returns an empty array for an empty input array' {
+    $result = @(Resolve-DccPaths -Paths @())
+    $result.Count | Should -Be 0
+  }
+
+  It 'resolves each entry of a multi-entry array' {
+    $a = [System.IO.Path]::Combine('C:\', 'Libs', 'A')
+    $b = [System.IO.Path]::Combine('C:\', 'Libs', 'B')
+    $result = @(Resolve-DccPaths -Paths @($a, $b))
+    $result.Count | Should -Be 2
+    $result[0] | Should -Be $a
+    $result[1] | Should -Be $b
+  }
+
+}
+
+Describe 'Invoke-DccProject -- working directory and relative-path anchoring' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  Context 'WorkingDirectory is forwarded to Invoke-DccExe' {
+
+    BeforeAll {
+      $script:capturedWorkingDir = $null
+      Mock Invoke-DccExe {
+        $script:capturedWorkingDir = $WorkingDirectory
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath     'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile      'C:\Projects\MyApp.dpr' `
+        -Config           'Debug' `
+        -Target           'Build' `
+        -Verbosity        'normal' `
+        -WorkingDirectory 'C:\Work\Dir'
+    }
+
+    It 'passes the WorkingDirectory to Invoke-DccExe' {
+      $script:capturedWorkingDir | Should -Be 'C:\Work\Dir'
+    }
+
+  }
+
+  Context 'relative ExeOutputDir is anchored to the caller CWD, not the project dir' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      $script:anchor = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-exeout-anchor')
+      $null = New-Item -ItemType Directory -Path $script:anchor -Force
+      $script:originalEnvCwd = [System.Environment]::CurrentDirectory
+      [System.Environment]::CurrentDirectory = $script:anchor
+
+      Invoke-DccProject `
+        -CompilerPath     'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile      'C:\Projects\Deep\MyApp.dpr' `
+        -Config           'Debug' `
+        -Target           'Build' `
+        -Verbosity        'normal' `
+        -ExeOutputDir     'out\bin' `
+        -WorkingDirectory 'C:\Projects\Deep'
+    }
+
+    AfterAll {
+      [System.Environment]::CurrentDirectory = $script:originalEnvCwd
+      Remove-Item -LiteralPath $script:anchor -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'emits -E resolved against the caller CWD (temp anchor), not the project folder' {
+      $expected = '-E' + [System.IO.Path]::Combine([System.IO.Path]::GetFullPath($script:anchor), 'out', 'bin')
+      $script:capturedArgs | Should -Contain $expected
+    }
+
+    It 'does not anchor the output under the project folder' {
+      ($script:capturedArgs | Where-Object { $_ -like '*Projects\Deep\out*' }) | Should -BeNullOrEmpty
+    }
+
+  }
+
+}
+
+Describe 'Invoke-DccExe -- working directory is applied to the child process and restored' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  # These tests invoke cmd.exe (not a Delphi compiler) purely to observe the
+  # working directory a native child process actually inherits -- the exact
+  # Windows PowerShell 5.1 behavior the -WorkingDirectory feature depends on.
+  Context 'child process runs in the requested working directory' -Skip:(-not $IsWindows) {
+
+    BeforeAll {
+      $script:workDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-exe-cwd')
+      $null = New-Item -ItemType Directory -Path $script:workDir -Force
+      $script:expectedDir = [System.IO.Path]::GetFullPath($script:workDir).TrimEnd('\')
+      $script:originalEnvCwd = [System.Environment]::CurrentDirectory
+
+      # `cmd /c cd` prints the child's current directory.
+      $script:result = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'cd') -WorkingDirectory $script:workDir
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:workDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'exits 0' {
+      $script:result.ExitCode | Should -Be 0
+    }
+
+    It 'the child reported the requested working directory' {
+      $script:result.Output.Trim() | Should -Be $script:expectedDir
+    }
+
+    It 'restores [Environment]::CurrentDirectory afterward' {
+      [System.Environment]::CurrentDirectory | Should -Be $script:originalEnvCwd
+    }
+
+  }
+
+  Context 'working directory is restored even when the child exits non-zero' -Skip:(-not $IsWindows) {
+
+    BeforeAll {
+      $script:workDir = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-exe-cwd-fail')
+      $null = New-Item -ItemType Directory -Path $script:workDir -Force
+      $script:originalEnvCwd = [System.Environment]::CurrentDirectory
+
+      $script:result = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'exit 7') -WorkingDirectory $script:workDir
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:workDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'propagates the non-zero exit code' {
+      $script:result.ExitCode | Should -Be 7
+    }
+
+    It 'still restores [Environment]::CurrentDirectory' {
+      [System.Environment]::CurrentDirectory | Should -Be $script:originalEnvCwd
+    }
+
+  }
+
+  Context 'omitting WorkingDirectory leaves the process CWD untouched' -Skip:(-not $IsWindows) {
+
+    BeforeAll {
+      $script:originalEnvCwd = [System.Environment]::CurrentDirectory
+      $script:result = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'exit 0')
+    }
+
+    It 'exits 0' {
+      $script:result.ExitCode | Should -Be 0
+    }
+
+    It 'does not change [Environment]::CurrentDirectory' {
+      [System.Environment]::CurrentDirectory | Should -Be $script:originalEnvCwd
     }
 
   }

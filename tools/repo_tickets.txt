@@ -128,3 +128,71 @@ self-contained invocation the batch system relies on.
       switch is omitted
 
 ---
+Title: Run dcc32 from the project's directory so relative in / {$I} / {$R} paths resolve
+Issue: #15
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+`delphi-dccbuild.ps1` invokes `dcc32.exe` in the caller's current working
+directory; it does not `cd` into the project (.dpr) folder the way the legacy
+batch (`rad-buildfiles-shared\DelphiBuild.bat`) does. Any path the project
+resolves against the compiler's working directory then breaks:
+
+- a `uses` reference like `SomeUnit in '..\..\shared\SomeUnit.pas'`
+- `{$I ..\common\defs.inc}` include directives
+- `{$R ..\res\app.res}` resource directives
+
+Observed concretely: building `radLicenseXPHarness.dpr` (which has
+`radLicense in '..\..\verifier\radLicense.pas'`) via `-RootDir` against a
+trimmed Delphi 2010 toolchain failed with `F1026 File not found:
+'radLicense.dcu'` until the caller manually set the process working directory
+to the project folder. The batch avoids this by `cd`-ing into the .dpr
+directory before invoking dcc32.
+
+## Proposed
+
+Before invoking dcc32, set the working directory to the folder of the resolved
+`-ProjectFile`, and restore the original CWD afterward (even on failure). This
+matches the batch and makes relative `in` / `{$I}` / `{$R}` references resolve
+as the project author intended.
+
+Add a `-WorkingDirectory <path>` override whose default is the resolved project
+file's folder. Callers who need a different CWD (including "don't change dir --
+use my current CWD") pass it explicitly. This single knob subsumes a
+`-NoChangeDir` switch and is more flexible.
+
+## Implementation notes (confirmed)
+
+1. `Set-Location` / `Push-Location` ALONE will NOT change dcc32's working
+   directory on Windows PowerShell 5.1. A native child process inherits
+   `[System.Environment]::CurrentDirectory` (the .NET process CWD), which in
+   WinPS 5.1 does not track PowerShell's `$PWD` / `Set-Location`. This repo
+   targets 5.1 (`tests\pwsh\WindowsPS51Compat.Tests.ps1`), so a naive
+   push/pop would pass the mocked test suite but silently fail against a real
+   compiler. The implementation MUST set `[System.Environment]::CurrentDirectory`
+   (or use `Start-Process -WorkingDirectory`) and restore it in a `finally`.
+   Place this inside `Invoke-DccExe`, wrapping the actual `& $CompilerPath`
+   call, so the restore is guaranteed on throw.
+
+2. Relative output/search paths change meaning once CWD moves. `ProjectFile`
+   is already resolved to absolute before invocation, so it is safe. But
+   relative `-ExeOutputDir` / `-DcuOutputDir` / `-UnitSearchPath` /
+   `-IncludePath` / `-ResourcePath` / `-BplOutputDir` / `-DcpOutputDir` /
+   `-BpiOutputDir` would otherwise anchor to the project dir instead of the
+   caller's CWD. Resolve these to absolute against the caller's ORIGINAL CWD
+   before the cd so existing callers see no behavior change, and document it.
+
+## Acceptance criteria
+
+- [ ] dcc32 runs with its working directory set to the resolved project file's folder by default
+- [ ] `-WorkingDirectory <path>` overrides the default; passing the caller's CWD reproduces the old (no-change) behavior
+- [ ] A project with a relative `in '..\..\path\Unit.pas'` reference builds without the caller pre-setting CWD
+- [ ] The native compiler's working directory is actually changed on Windows PowerShell 5.1 (not just `$PWD`)
+- [ ] The caller's original working directory (`$PWD` and `[Environment]::CurrentDirectory`) is restored after the build, even on failure
+- [ ] Relative `-ExeOutputDir` / `-DcuOutputDir` and other relative path params anchor to the caller's original CWD, not the new project CWD, and this is documented
+- [ ] Builds that already pass absolute paths are unaffected
+- [ ] The result object records the working directory used
+
+---
