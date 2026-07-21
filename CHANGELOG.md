@@ -6,6 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- Add `-ExtraArgs` escape hatch that appends arbitrary arguments verbatim
+  after the modeled switches, for dcc32 options the script does not model
+  (e.g. `-$D0`, `-$L-`, `-JL`, `-V*`); array boundaries and order preserved
+  [#13](https://github.com/continuous-delphi/delphi-dccbuild/issues/13)
+
 - Add resource and package switches: `-ResourcePath` (`-R`), `-BplOutputDir`
   (`-LE`), `-DcpOutputDir` (`-LN`), `-BpiOutputDir` (`-NB`), and `-LinkPackage`
   (`-LU`).  `-LinkPackage` is strictly opt-in so the static-link default keeps

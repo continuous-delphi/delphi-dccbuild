@@ -57,6 +57,7 @@
     ResourcePath single/multiple adds -R (semicolon-joined); omitted adds nothing.
     BplOutputDir/DcpOutputDir/BpiOutputDir add -LE/-LN/-NB; omitted add nothing.
     LinkPackage single/multiple adds -LU (semicolon-joined); omitted adds nothing (static default).
+    ExtraArgs appended verbatim after modeled switches; boundaries/order preserved; omitted adds nothing.
 
   Describe 8 - Main flow (via Invoke-ToolProcess, no DCC calls):
     Exits 3 when no rootDir is provided (no pipeline, no -RootDir).
@@ -1127,6 +1128,161 @@ Describe 'Invoke-DccProject' {
 
     It 'no argument starts with -LU' {
       $script:capturedArgs | Where-Object { $_ -like '-LU*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'ExtraArgs single entry is appended verbatim' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -ExtraArgs    @('-$D0')
+    }
+
+    It 'includes the -$D0 argument as-is' {
+      $script:capturedArgs | Should -Contain '-$D0'
+    }
+
+  }
+
+  Context 'ExtraArgs multiple entries preserve array boundaries' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -ExtraArgs    @('-$D0', '-$L-', '-$C-', '-$Y-')
+    }
+
+    It 'passes each element as a distinct argument (no joining)' {
+      $script:capturedArgs | Should -Contain '-$D0'
+      $script:capturedArgs | Should -Contain '-$L-'
+      $script:capturedArgs | Should -Contain '-$C-'
+      $script:capturedArgs | Should -Contain '-$Y-'
+    }
+
+  }
+
+  Context 'ExtraArgs element containing a space is not split' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -ExtraArgs    @('-Vraw with space')
+    }
+
+    It 'keeps the spaced value as a single argument' {
+      $script:capturedArgs | Should -Contain '-Vraw with space'
+    }
+
+  }
+
+  Context 'ExtraArgs are positioned after the modeled switches' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Define       @('MYFLAG') `
+        -ExtraArgs    @('-JL')
+    }
+
+    It 'the -JL extra arg appears after the modeled -DMYFLAG define' {
+      $extraIdx = [array]::IndexOf($script:capturedArgs, '-JL')
+      $defIdx   = [array]::IndexOf($script:capturedArgs, '-DMYFLAG')
+      $extraIdx | Should -BeGreaterThan $defIdx
+    }
+
+  }
+
+  Context 'ExtraArgs preserve their relative order' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -ExtraArgs    @('-JL', '-V')
+    }
+
+    It '-JL precedes -V in the captured args' {
+      $jlIdx = [array]::IndexOf($script:capturedArgs, '-JL')
+      $vIdx  = [array]::IndexOf($script:capturedArgs, '-V')
+      $jlIdx | Should -BeGreaterOrEqual 0
+      $vIdx  | Should -BeGreaterThan $jlIdx
+    }
+
+  }
+
+  Context 'ExtraArgs omitted adds nothing' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'captured args contain only the project file and modeled switches' {
+      # Project file + -DDEBUG only for this minimal invocation
+      @($script:capturedArgs).Count | Should -Be 2
+      $script:capturedArgs[0] | Should -Be 'C:\Projects\MyApp.dpr'
+      $script:capturedArgs | Should -Contain '-DDEBUG'
     }
 
   }

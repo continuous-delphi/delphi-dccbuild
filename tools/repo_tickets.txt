@@ -72,6 +72,7 @@ opt-in.
 ---
 Title: Add -ExtraArgs generic dcc32 pass-through
 Issue: #13
+Status: closed
 Labels: enhancement
 Body:
 ## Problem

@@ -394,6 +394,34 @@ delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root -NoConfig `
     -Namespace System, Vcl -UnitSearchPath 'C:\Libs\A', 'C:\Libs\B'
 ```
 
+## -ExtraArgs
+
+```text
+-ExtraArgs <string[]>
+```
+
+An escape hatch for dcc32 switches this script does not model -- for example
+the code-gen switches the legacy batch build uses (`-$D0`, `-$L-`, `-$C-`,
+`-$Y-`), map-file options, `-JL`, or `-V*`.  Each array element is appended to
+the command line **verbatim**: no splitting, re-escaping, or reordering, so an
+element that contains spaces stays a single argument.
+
+The extra arguments are placed **after all the modeled switches**.  Because
+this script positions the project file first on the command line, "after the
+modeled switches" means at the end of the argument list.  Relative order among
+the supplied elements is preserved.
+
+When omitted (or an empty array), nothing is added.  The result object's
+`.extraArgs` is `$null` when no arguments are supplied.
+
+Example:
+
+```powershell
+# Pass code-gen and map-file switches the script does not model
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
+    -ExtraArgs '-$D0', '-$L-', '-$C-', '-$Y-', '-GD'
+```
+
 ## -ShowOutput   (switch)
 
 ```text
@@ -456,6 +484,7 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `bpiOutputDir`   | string   | Value of `-BpiOutputDir`; `$null` when not supplied           |
 | `linkPackage`    | string[] | Value of `-LinkPackage`; `$null` when not supplied            |
 | `noConfig`       | bool     | `$true` when `-NoConfig` was set (dcc32.cfg skipped)          |
+| `extraArgs`      | string[] | Value of `-ExtraArgs`; `$null` when not supplied              |
 | `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
 
 On errors before the compiler is invoked (exit codes 2, 3, 4) no result

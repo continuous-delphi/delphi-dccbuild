@@ -56,6 +56,10 @@ NOTES
   it makes the output depend on rtlNNN.bpl / vclNNN.bpl at load time, so the
   default remains statically linked so standalone exes keep working.
 
+  -ExtraArgs is an escape hatch: each element is appended verbatim after all
+  modeled switches (no splitting or re-escaping) for dcc32 options this script
+  does not model (e.g. -$D0, -$L-, -JL, -V*).
+
   -Target Build   compiles only changed units.
   -Target Rebuild adds -B to force recompilation of all units.
 
@@ -157,6 +161,15 @@ param(
   # preserves the current default (cfg auto-loaded).
   [switch]$NoConfig,
 
+  # Extra arguments appended verbatim to the dcc32 command line after all the
+  # modeled switches.  Each array element is passed through as-is -- no
+  # splitting, re-escaping, or reordering -- so array boundaries are preserved.
+  # An escape hatch for switches this script does not model, e.g. the code-gen
+  # switches -$D0 / -$L- / -$C- / -$Y-, map-file options, -JL, or -V*.
+  # NOTE: this script places the project file first on the command line, so
+  # "after the modeled switches" means at the end of the argument list.
+  [string[]]$ExtraArgs = @(),
+
   [switch]$ShowOutput
 )
 
@@ -170,7 +183,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.3.3'
+$script:Version = '0.3.4'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -316,6 +329,7 @@ function Invoke-DccProject {
     [string]$BpiOutputDir,
     [string[]]$LinkPackage    = @(),
     [switch]$NoConfig,
+    [string[]]$ExtraArgs      = @(),
     [switch]$ShowOutput
   )
 
@@ -356,6 +370,10 @@ function Invoke-DccProject {
 
   # Runtime packages to link (opt-in): joined with semicolons into a single -LU flag
   if ($LinkPackage.Count -gt 0) { $dccArgs += "-LU$($LinkPackage -join ';')" }
+
+  # Extra pass-through args appended verbatim after all modeled switches.
+  # Adding the array with += preserves each element as a distinct argument.
+  if ($ExtraArgs.Count -gt 0) { $dccArgs += $ExtraArgs }
 
   return Invoke-DccExe -CompilerPath $CompilerPath -Arguments $dccArgs -ShowOutput:$ShowOutput
 }
@@ -419,6 +437,7 @@ try {
     -BpiOutputDir    $BpiOutputDir `
     -LinkPackage     $LinkPackage `
     -NoConfig:$NoConfig `
+    -ExtraArgs       $ExtraArgs `
     -ShowOutput:$ShowOutput
 
   $resultObj = [pscustomobject]@{
@@ -442,6 +461,7 @@ try {
     bpiOutputDir   = if ([string]::IsNullOrWhiteSpace($BpiOutputDir)) { $null } else { $BpiOutputDir }
     linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
     noConfig       = [bool]$NoConfig
+    extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
     output         = $buildResult.Output
