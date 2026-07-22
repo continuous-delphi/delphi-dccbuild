@@ -1523,6 +1523,47 @@ Describe 'Main flow -- pre-compiler validation (no DCC invoked)' {
 
   }
 
+  Context 'exits 6 when an output directory cannot be created' {
+
+    BeforeAll {
+      # Seed a full, valid installation (rsvars.bat + dcc32.exe) and a real
+      # project file so validation passes to the output-dir creation step.
+      $script:tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'delphi-dccbuild-outdir-test'
+      $script:tempBin  = Join-Path $script:tempRoot 'bin'
+      $null = New-Item -ItemType Directory -Path $script:tempBin -Force
+      $null = New-Item -ItemType File -Path (Join-Path $script:tempBin 'rsvars.bat') -Force
+      $null = New-Item -ItemType File -Path (Join-Path $script:tempBin 'dcc32.exe') -Force
+
+      $script:projFile = Join-Path $script:tempRoot 'MyApp.dpr'
+      $null = New-Item -ItemType File -Path $script:projFile -Force
+
+      # Point -ExeOutputDir at a path already occupied by a FILE, so directory
+      # creation fails before the compiler is ever invoked.
+      $script:inTheWay = Join-Path $script:tempRoot 'occupied'
+      $null = New-Item -ItemType File -Path $script:inTheWay -Force
+
+      $script:result = Invoke-ToolProcess -ScriptPath $script:scriptPath -Arguments @(
+        '-ProjectFile',  $script:projFile,
+        '-RootDir',      $script:tempRoot,
+        '-Platform',     'Win32',
+        '-ExeOutputDir', $script:inTheWay
+      )
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'exit code is 6' {
+      $script:result.ExitCode | Should -Be 6
+    }
+
+    It 'stderr names the failed output directory' {
+      $script:result.StdErr -join ' ' | Should -Match 'Failed to create output directory'
+    }
+
+  }
+
 }
 
 Describe 'Resolve-WorkingDirectory' {
@@ -1615,6 +1656,67 @@ Describe 'Resolve-DccPath / Resolve-DccPaths' {
     $result.Count | Should -Be 2
     $result[0] | Should -Be $a
     $result[1] | Should -Be $b
+  }
+
+}
+
+Describe 'New-DccOutputDirectory' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+    $script:sandbox = Join-Path ([System.IO.Path]::GetTempPath()) 'dccbuild-outdir-test'
+  }
+
+  BeforeEach {
+    Remove-Item -LiteralPath $script:sandbox -Recurse -Force -ErrorAction SilentlyContinue
+    $null = New-Item -ItemType Directory -Path $script:sandbox -Force
+  }
+
+  AfterAll {
+    Remove-Item -LiteralPath $script:sandbox -Recurse -Force -ErrorAction SilentlyContinue
+  }
+
+  It 'creates a missing directory' {
+    $target = Join-Path $script:sandbox 'bin'
+    New-DccOutputDirectory -Directories @($target)
+    Test-Path -LiteralPath $target -PathType Container | Should -BeTrue
+  }
+
+  It 'creates nested missing directories' {
+    $target = Join-Path $script:sandbox 'out\win32\release'
+    New-DccOutputDirectory -Directories @($target)
+    Test-Path -LiteralPath $target -PathType Container | Should -BeTrue
+  }
+
+  It 'creates all supplied directories' {
+    $a = Join-Path $script:sandbox 'exe'
+    $b = Join-Path $script:sandbox 'dcu'
+    $c = Join-Path $script:sandbox 'bpl'
+    New-DccOutputDirectory -Directories @($a, $b, $c)
+    Test-Path -LiteralPath $a -PathType Container | Should -BeTrue
+    Test-Path -LiteralPath $b -PathType Container | Should -BeTrue
+    Test-Path -LiteralPath $c -PathType Container | Should -BeTrue
+  }
+
+  It 'is idempotent for an existing directory (no throw)' {
+    $target = Join-Path $script:sandbox 'exists'
+    $null = New-Item -ItemType Directory -Path $target -Force
+    { New-DccOutputDirectory -Directories @($target) } | Should -Not -Throw
+    Test-Path -LiteralPath $target -PathType Container | Should -BeTrue
+  }
+
+  It 'skips null / empty / whitespace entries and creates nothing for them' {
+    { New-DccOutputDirectory -Directories @($null, '', '   ') } | Should -Not -Throw
+    # Only the sandbox itself should exist; no stray children were created.
+    @(Get-ChildItem -LiteralPath $script:sandbox).Count | Should -Be 0
+  }
+
+  It 'throws a clear message when a file already occupies the path' {
+    $inTheWay = Join-Path $script:sandbox 'occupied'
+    $null = New-Item -ItemType File -Path $inTheWay -Force
+    { New-DccOutputDirectory -Directories @($inTheWay) } |
+      Should -Throw -ExpectedMessage "*Failed to create output directory: $inTheWay*"
   }
 
 }

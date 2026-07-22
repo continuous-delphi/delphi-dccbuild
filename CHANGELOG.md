@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.12] - 2026-07-21
+
+- Auto-create output directories (`-ExeOutputDir`, `-DcuOutputDir`,
+  `-BplOutputDir`, `-DcpOutputDir`, `-BpiOutputDir`) before invoking the
+  compiler.  `dcc32` does not create a missing output dir (it fails with an I/O
+  error), unlike MSBuild's DCC targets.  Creation is idempotent and anchors
+  relative dirs to the caller's original CWD; a creation failure (invalid path,
+  permission, or a file in the way) fails fast with new exit code 6
+  [#19](https://github.com/continuous-delphi/delphi-dccbuild/issues/19)
+
 ## [0.4.11] - 2026-07-21
 
 - Fix `warnings`/`errors` reading 0 on every module-driven DCC build:

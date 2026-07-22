@@ -351,3 +351,73 @@ the module) becomes populated too.
 - [ ] The result object's `.output` is populated under `-ShowOutput`
 
 ---
+Title: Auto-create output directories before invoking DCC
+Issue: #19
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+`delphi-dccbuild.ps1` passes the output directories straight to `dcc32.exe`
+(`-E<ExeOutputDir>`, `-N0<DcuOutputDir>`, `-LE<BplOutputDir>`,
+`-LN<DcpOutputDir>`, `-NB<BpiOutputDir>`) but never creates them. `dcc32.exe`
+invoked directly does NOT create a missing output directory -- it fails with an
+I/O / cannot-create-output error. This bites the common CI case: a fresh
+checkout whose `bin\` / `dcu\` output folders do not exist yet.
+
+`delphi-msbuild` does not have this problem, but NOT because its wrapper creates
+the directory -- neither PowerShell wrapper does. The difference is who consumes
+the values: MSBuild's DCC targets run a `MakeDir` task before compiling, so the
+dir appears automatically. Nothing downstream of `delphi-dccbuild` does that, so
+for behavioral parity `delphi-dccbuild` must create the directories itself.
+
+## Proposed
+
+Before invoking the compiler, create each supplied output directory if it does
+not already exist. Cover all five: `-ExeOutputDir`, `-DcuOutputDir`,
+`-BplOutputDir`, `-DcpOutputDir`, `-BpiOutputDir`.
+
+Implementation notes (confirmed against the current code):
+
+1. Create from the ALREADY-RESOLVED absolute paths (the `Resolve-DccPath`
+   output in `Invoke-DccProject`), BEFORE `Invoke-DccExe` changes the compiler's
+   working directory -- so a relative output dir still anchors to the caller's
+   original CWD (consistent with #15), not the project folder.
+2. `New-Item -ItemType Directory -Force` is idempotent -- no error when the
+   directory already exists; do not guard with a separate `Test-Path`.
+3. Only create a directory for a param that was actually supplied. Omitted
+   params (null/empty) create nothing.
+
+## Fail-fast on creation failure (decision)
+
+If a directory cannot be created (invalid path, permission denied, a file
+already exists at that path), FAIL FAST before the compiler runs, with a clear
+message naming the directory and the underlying error, and a DEDICATED exit code
+distinct from the existing ones -- do not let `dcc32` emit a cryptic I/O error.
+
+- Add a new exit-code constant (next free value, `6` =
+  `ExitOutputDirError`) and document it in the script header comment, the README
+  exit-code table, and CLAUDE.md.
+- Emit the failure via `Write-Error ... -ErrorAction Continue` then
+  `exit $ExitOutputDirError`, matching how the other pre-compiler validation
+  failures (exit 3/4) are reported. No result object is emitted on this path
+  (consistent with the other pre-compiler errors).
+
+## Acceptance criteria
+
+- [ ] A build with a non-existent `-ExeOutputDir` / `-DcuOutputDir` succeeds
+      (directory is created) instead of failing
+- [ ] All five output-dir params (`-ExeOutputDir`, `-DcuOutputDir`,
+      `-BplOutputDir`, `-DcpOutputDir`, `-BpiOutputDir`) are created when supplied
+- [ ] Directories are created from absolute paths resolved against the caller's
+      original CWD, before the working-directory change
+- [ ] An existing directory is left untouched (idempotent, no error)
+- [ ] Omitted params create nothing
+- [ ] A creation failure (invalid path / permission / file-in-the-way) fails
+      fast with a clear message naming the directory, before dcc32 is invoked
+- [ ] The failure uses a dedicated exit code (6) distinct from 3/4/5, documented
+      in the script header, README, and CLAUDE.md
+- [ ] No result object is emitted on the creation-failure path
+- [ ] Existing callers that pass already-existing (or absolute) dirs are unaffected
+
+---

@@ -181,6 +181,9 @@ When omitted, DCC uses the default output location defined in the
 project's `.cfg` file.  The result object's `.exeOutputDir` is `$null`
 when this parameter is not supplied.
 
+The directory is created if it does not already exist -- see
+[Output directory creation](#output-directory-creation) below.
+
 ## -DcuOutputDir
 
 ```text
@@ -539,6 +542,35 @@ object is emitted.
 | `3`  | `rootDir` missing/empty, directory not found, `rsvars.bat` absent, or compiler exe absent |
 | `4`  | Project file not found on disk                                                 |
 | `5`  | DCC compiler completed but returned a non-zero exit code                       |
+| `6`  | A supplied output directory could not be created                              |
+
+------------------------------------------------------------------------
+
+# Output directory creation
+
+Any supplied output directory -- `-ExeOutputDir` (`-E`), `-DcuOutputDir`
+(`-N0`), `-BplOutputDir` (`-LE`), `-DcpOutputDir` (`-LN`), and
+`-BpiOutputDir` (`-NB`) -- is created before the compiler runs if it does
+not already exist.
+
+`dcc32` invoked directly does **not** create a missing output directory --
+it fails with an I/O error -- unlike MSBuild's DCC targets, which run a
+`MakeDir` task.  `delphi-dccbuild.ps1` fills that gap so a fresh checkout
+whose output folders do not exist yet builds without a manual `mkdir`.
+
+Details:
+
+- Creation is **idempotent**: an existing directory is left untouched.
+- Only directories for parameters that were actually supplied are created;
+  omitting a parameter creates nothing.
+- Relative output directories are resolved to absolute against the caller's
+  original working directory (the same anchoring used for the compiler
+  switches), so they land where the caller expects even though the compiler
+  runs from the project folder.
+- If a directory cannot be created -- an invalid path, a permission error,
+  or a file already occupying the path -- the build **fails fast with exit
+  code 6** before the compiler is invoked, and no result object is emitted.
+  The error names the directory that could not be created.
 
 ------------------------------------------------------------------------
 
