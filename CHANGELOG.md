@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.8] - 2026-07-21
+
+- Add `-OutputFile <path>` (writes the result object as compressed JSON to a
+  file) and `-Format object|json` (default `object`), matching
+  `delphi-msbuild.ps1` so `delphi-powershell-ci`'s DCCBuild engine can marshal
+  the result end-to-end
+  [#16](https://github.com/continuous-delphi/delphi-dccbuild/issues/16)
+
 ## [0.4.7] - 2026-07-21
 
 - Run the compiler from the project file's folder by default so relative

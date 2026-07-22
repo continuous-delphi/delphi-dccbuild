@@ -85,6 +85,14 @@
     Child process runs in the requested working directory; [Environment]::CurrentDirectory restored.
     Working directory restored even when the child exits non-zero.
     Omitting WorkingDirectory leaves the process CWD untouched.
+
+  Describe 13 - Write-DccResult (-OutputFile / -Format):
+    Omitting both emits the PSCustomObject to the pipeline (default, unchanged).
+    -Format json emits a single compressed JSON line to the pipeline.
+    -Format json round-trips to an object whose fields match the source.
+    -OutputFile writes the result as compressed JSON to the given path.
+    -OutputFile is written even when -Format object is used (default).
+    -OutputFile JSON round-trips to an object whose fields match the source.
 #>
 
 Describe 'Resolve-RootDir' {
@@ -1749,6 +1757,107 @@ Describe 'Invoke-DccExe -- working directory is applied to the child process and
 
     It 'does not change [Environment]::CurrentDirectory' {
       [System.Environment]::CurrentDirectory | Should -Be $script:originalEnvCwd
+    }
+
+  }
+
+}
+
+Describe 'Write-DccResult -- OutputFile / Format' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+
+    $script:sampleResult = [pscustomobject]@{
+      scriptVersion = '0.4.8'
+      projectFile   = 'C:\Projects\MyApp.dpr'
+      platform      = 'Win32'
+      config        = 'Debug'
+      exitCode      = 0
+      success       = $true
+      output        = 'compile ok'
+    }
+  }
+
+  Context 'default (Format object, no OutputFile) emits the object to the pipeline' {
+
+    BeforeAll {
+      $script:out = Write-DccResult -ResultObject $script:sampleResult -OutputFile '' -Format 'object'
+    }
+
+    It 'emits a single object (not a JSON string)' {
+      @($script:out).Count | Should -Be 1
+      $script:out | Should -BeOfType [System.Management.Automation.PSCustomObject]
+    }
+
+    It 'the emitted object retains its fields' {
+      $script:out.projectFile | Should -Be 'C:\Projects\MyApp.dpr'
+      $script:out.exitCode    | Should -Be 0
+      $script:out.success     | Should -BeTrue
+    }
+
+  }
+
+  Context 'Format json emits a single compressed JSON line' {
+
+    BeforeAll {
+      $script:out = Write-DccResult -ResultObject $script:sampleResult -OutputFile '' -Format 'json'
+    }
+
+    It 'emits a string, not an object' {
+      $script:out | Should -BeOfType [string]
+    }
+
+    It 'is a single compressed line (no embedded newlines)' {
+      @($script:out).Count | Should -Be 1
+      $script:out | Should -Not -Match "`n"
+    }
+
+    It 'round-trips to an object whose fields match the source' {
+      $parsed = $script:out | ConvertFrom-Json
+      $parsed.projectFile | Should -Be 'C:\Projects\MyApp.dpr'
+      $parsed.platform    | Should -Be 'Win32'
+      $parsed.exitCode    | Should -Be 0
+      $parsed.success     | Should -BeTrue
+    }
+
+  }
+
+  Context 'OutputFile writes the result as JSON to the given path' {
+
+    BeforeAll {
+      $script:tempFile = Join-Path ([System.IO.Path]::GetTempPath()) 'dccbuild-outputfile-test.json'
+      Remove-Item -LiteralPath $script:tempFile -Force -ErrorAction SilentlyContinue
+
+      # Format object (default) so we also confirm the file is written
+      # independently of the pipeline format.
+      $script:out = Write-DccResult -ResultObject $script:sampleResult -OutputFile $script:tempFile -Format 'object'
+    }
+
+    AfterAll {
+      Remove-Item -LiteralPath $script:tempFile -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'creates the output file' {
+      Test-Path -LiteralPath $script:tempFile | Should -BeTrue
+    }
+
+    It 'the file contents round-trip to an object whose fields match the source' {
+      $parsed = Get-Content -LiteralPath $script:tempFile -Raw | ConvertFrom-Json
+      $parsed.projectFile | Should -Be 'C:\Projects\MyApp.dpr'
+      $parsed.config      | Should -Be 'Debug'
+      $parsed.success     | Should -BeTrue
+    }
+
+    It 'the file is a single compressed JSON line' {
+      $lines = Get-Content -LiteralPath $script:tempFile
+      @($lines).Count | Should -Be 1
+    }
+
+    It 'still emits the object to the pipeline (Format object)' {
+      $script:out | Should -BeOfType [System.Management.Automation.PSCustomObject]
+      $script:out.projectFile | Should -Be 'C:\Projects\MyApp.dpr'
     }
 
   }

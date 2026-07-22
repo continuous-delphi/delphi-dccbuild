@@ -196,3 +196,47 @@ use my current CWD") pass it explicitly. This single knob subsumes a
 - [ ] The result object records the working directory used
 
 ---
+Title: Add -OutputFile / -Format for structured result output (parity with delphi-msbuild)
+Issue: #16
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+`delphi-msbuild.ps1` supports `-OutputFile <path>` (writes the result object as
+JSON to a file) and `-Format object|json`. `delphi-dccbuild.ps1` has neither --
+it only emits the result object to the pipeline.
+
+This breaks the `delphi-powershell-ci` module's DCCBuild engine. Its
+`Invoke-BuildPipeline` marshals every build's result by passing
+`-OutputFile <temp>` to the bundled tool and reading the JSON back
+(unconditional -- same code path for both engines). Because dccbuild has no
+`-OutputFile`, `Invoke-DelphiBuild -BuildEngine DCCBuild` fails immediately with:
+
+  delphi-dccbuild.ps1: A parameter cannot be found that matches parameter name 'OutputFile'.
+
+Observed building `radLicenseXPHarness.dpr` against a portable Delphi 10.4
+Sydney toolchain via `Invoke-DelphiBuild ... -BuildEngine DCCBuild
+-ToolchainRootDir ...`. The same project builds fine via the standalone
+`delphi-dccbuild.ps1` (which returns its object to the pipeline), so this is
+purely the missing file/JSON output contract.
+
+## Proposed
+
+Add, matching delphi-msbuild's surface and semantics:
+
+- `-OutputFile <string>`  -- write the result object as JSON to this path
+- `-Format object|json`   -- default `object` (current behavior); `json` emits JSON
+
+Keep the current pipeline-object output as the default so existing callers are
+unaffected. After this lands, re-sync the bundled copy in delphi-powershell-ci.
+
+## Acceptance criteria
+
+- [ ] `-OutputFile` writes the full result object as JSON to the given path
+- [ ] `-Format json` emits JSON to the pipeline; `-Format object` (default) is unchanged
+- [ ] The JSON fields match delphi-msbuild's so the CI module can read either uniformly
+- [ ] Omitting both preserves the current default (object to the pipeline)
+- [ ] `delphi-powershell-ci` `Invoke-DelphiBuild -BuildEngine DCCBuild` marshals the result end-to-end
+
+---
