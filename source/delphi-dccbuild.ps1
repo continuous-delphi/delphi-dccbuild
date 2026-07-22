@@ -84,9 +84,10 @@ NOTES
   -Verbosity quiet adds -Q to suppress hints and warnings.
   -Verbosity normal (default) produces standard DCC output.
 
-  By default DCC output is captured and returned in the result object's
-  .output property.  Use -ShowOutput to stream output to stdout in real time;
-  in that case .output is null and errors are written via Write-Error.
+  DCC output is always captured and returned in the result object's .output
+  property.  -ShowOutput additionally streams each line to the host in real
+  time (a tee, matching delphi-msbuild.ps1); it does not suppress capture, so
+  .output and the warning/error tally are populated either way.
 
   -OutputFile writes the full result object as compressed JSON to the given
   path.  -Format json emits the result object as a single compressed JSON line
@@ -100,9 +101,10 @@ NOTES
   counted from the compiler's diagnostic codes: .warnings from W#### lines and
   .errors from E#### plus F#### (fatal) lines; hints (H####) count as neither.
   Codes are counted rather than the localized severity words so the tally holds
-  under non-English toolchains.  With -Verbosity quiet (which suppresses
-  hints/warnings) or -ShowOutput (which does not capture output) the counts are
-  0 -- the same limitation delphi-msbuild has.
+  under non-English toolchains.  Because output is always captured (even under
+  -ShowOutput, which tees rather than suppresses), the counts are populated on
+  every code path.  -Verbosity quiet (-Q) suppresses hints and warnings (so
+  .warnings drops toward 0) but not errors, which are still counted.
 
   Exit codes:
     0  success
@@ -122,6 +124,8 @@ NOTES
   Justification='Function returns multiple KEY=VALUE lines from cmd.exe set; plural noun is accurate.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', 'Resolve-DccPaths',
   Justification='Function resolves an array of paths; plural noun is accurate.')]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+  Justification='Write-Host is intentional: -ShowOutput tees build text directly to the console host.')]
 param(
   [Parameter(ValueFromPipeline=$true)]
   [psobject]$DelphiInstallation,
@@ -257,7 +261,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.4.10'
+$script:Version = '0.4.12'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -399,9 +403,13 @@ function Resolve-DccPaths {
 }
 
 # Invoke the DCC compiler with the given arguments.
-# Returns [pscustomobject]@{ ExitCode; Output } where Output is $null when
-# -ShowOutput is set (output streams to stdout instead of being captured).
-# Separated into its own function so tests can mock it.
+# Returns [pscustomobject]@{ ExitCode; Output }.  Output is ALWAYS the captured
+# compiler text (never null): each line is accumulated, and additionally written
+# to the host when -ShowOutput is set.  This tee mirrors delphi-msbuild.ps1's
+# Invoke-MsbuildExe so the warning/error tally (Get-DccBuildCount) works even
+# when the caller streams -- notably delphi-powershell-ci's Invoke-BuildPipeline,
+# which always passes -ShowOutput.  Separated into its own function so tests can
+# mock it.
 #
 # When -WorkingDirectory is supplied the compiler runs with that directory as
 # its current directory, restored afterward even on failure.  IMPORTANT: a
@@ -430,13 +438,19 @@ function Invoke-DccExe {
       [System.Environment]::CurrentDirectory = $WorkingDirectory
     }
 
-    if ($ShowOutput) {
-      & $CompilerPath @Arguments | Out-Host
-      return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $null }
+    # Tee: always capture every line; also echo to the host under -ShowOutput.
+    $outputLines = New-Object System.Collections.Generic.List[string]
+    & $CompilerPath @Arguments 2>&1 | ForEach-Object {
+      $line = [string]$_
+      [void]$outputLines.Add($line)
+      if ($ShowOutput) { Write-Host $line }
     }
+    $exitCode = $LASTEXITCODE
 
-    $output = & $CompilerPath @Arguments 2>&1 | Out-String
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    $output = $outputLines -join [Environment]::NewLine
+    if ($outputLines.Count -gt 0) { $output += [Environment]::NewLine }
+
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
   }
   finally {
     if ($changeDir) {
@@ -550,8 +564,15 @@ function Invoke-DccProject {
 # ("Warning:", "Fatal:") are localized.  FATAL (F####) is folded into Errors
 # for parity with MSBuild's error tally; hints (H####) count as neither.
 #
-# When output is null/empty (e.g. -ShowOutput streamed it and did not capture),
-# both counts are 0 -- the same limitation delphi-msbuild's Get-BuildCount has.
+# Output is always captured by Invoke-DccExe (it tees under -ShowOutput rather
+# than streaming without capture), so these counts are populated on every code
+# path.  When output is empty -- e.g. -Verbosity quiet (-Q) told dcc32 not to
+# emit hints/warnings -- both counts are 0.
+#
+# Heuristic caveat: the code patterns match on word boundaries, so a token that
+# is literally a code (e.g. a file named W1035.pas echoed in the output) would
+# be counted.  Harmless in practice -- dcc32 does not echo such names -- and far
+# simpler than anchoring to the full "File.pas(line): Wnnnn " diagnostic shape.
 function Get-DccBuildCount {
   param([string]$Output)
 

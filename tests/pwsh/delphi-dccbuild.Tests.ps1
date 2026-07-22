@@ -100,6 +100,11 @@
     F#### (fatal) is folded into the error count; E#### + F#### tally together.
     Hints (H####) count as neither warnings nor errors.
     A realistic mixed build log is counted correctly; counts are integers.
+
+  Describe 15 - Invoke-DccExe output capture (tee):
+    Output is captured (not null) under -ShowOutput, so Get-DccBuildCount still counts.
+    Output is captured without -ShowOutput as well.
+    Lines stream to the information stream only when -ShowOutput is set.
 #>
 
 Describe 'Resolve-RootDir' {
@@ -1764,6 +1769,73 @@ Describe 'Invoke-DccExe -- working directory is applied to the child process and
 
     It 'does not change [Environment]::CurrentDirectory' {
       [System.Environment]::CurrentDirectory | Should -Be $script:originalEnvCwd
+    }
+
+  }
+
+}
+
+Describe 'Invoke-DccExe -- output is captured (tee), even under -ShowOutput' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  # Regression guard for the blocking defect where -ShowOutput returned
+  # Output = $null, starving Get-DccBuildCount so module-driven DCCBuild (which
+  # always passes -ShowOutput via Invoke-BuildPipeline) reported warnings = 0
+  # regardless of reality.  cmd.exe stands in for the compiler and emits a token
+  # that looks like a dcc32 warning code (W1035).
+  Context 'captures output under -ShowOutput so the warning tally still works' -Skip:(-not $IsWindows) {
+
+    BeforeAll {
+      $script:result = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'echo', 'W1035') -ShowOutput
+      $script:counts = Get-DccBuildCount -Output $script:result.Output
+    }
+
+    It 'exits 0' {
+      $script:result.ExitCode | Should -Be 0
+    }
+
+    It 'Output is captured (not null) under -ShowOutput' {
+      $script:result.Output | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Output contains the emitted diagnostic token' {
+      $script:result.Output | Should -Match 'W1035'
+    }
+
+    It 'the captured output feeds Get-DccBuildCount to a real count' {
+      $script:counts.Warnings | Should -Be 1
+    }
+
+  }
+
+  Context 'captures output without -ShowOutput as well' -Skip:(-not $IsWindows) {
+
+    BeforeAll {
+      $script:result = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'echo', 'W1035')
+    }
+
+    It 'Output contains the emitted diagnostic token' {
+      $script:result.Output | Should -Match 'W1035'
+    }
+
+  }
+
+  Context 'streams to the host only under -ShowOutput' -Skip:(-not $IsWindows) {
+
+    It 'writes the line to the information stream when -ShowOutput is set' {
+      $records = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'echo', 'STREAMED_ON') -ShowOutput 6>&1
+      $info = $records | Where-Object { $_ -is [System.Management.Automation.InformationRecord] }
+      (($info | ForEach-Object { $_.ToString() }) -join "`n") | Should -Match 'STREAMED_ON'
+    }
+
+    It 'writes nothing to the information stream when -ShowOutput is omitted' {
+      $records = Invoke-DccExe -CompilerPath $env:ComSpec -Arguments @('/c', 'echo', 'STREAMED_OFF') 6>&1
+      $info = $records | Where-Object { $_ -is [System.Management.Automation.InformationRecord] }
+      (($info | ForEach-Object { $_.ToString() }) -join "`n") | Should -Not -Match 'STREAMED_OFF'
     }
 
   }

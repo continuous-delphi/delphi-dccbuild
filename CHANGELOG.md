@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.11] - 2026-07-21
+
+- Fix `warnings`/`errors` reading 0 on every module-driven DCC build:
+  `Invoke-DccExe` under `-ShowOutput` returned `Output = $null` (streamed
+  instead of captured), starving `Get-DccBuildCount`, and
+  `delphi-powershell-ci`'s `Invoke-BuildPipeline` always passes `-ShowOutput`.
+  `Invoke-DccExe` now tees like `delphi-msbuild.ps1`'s `Invoke-MsbuildExe` --
+  output is always captured and additionally streamed to the host under
+  `-ShowOutput` -- so the counts and the result object's `.output` are
+  populated on every path
+  [#18](https://github.com/continuous-delphi/delphi-dccbuild/issues/18)
+
 ## [0.4.10] - 2026-07-21
 
 - Add integer `warnings` and `errors` fields to the result object, matching

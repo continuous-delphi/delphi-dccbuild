@@ -304,3 +304,50 @@ After this lands, re-sync the bundled copy in delphi-powershell-ci.
 - [ ] Omitting captured output (-ShowOutput) yields 0 / 0, consistent with msbuild
 
 ---
+Title: Fix warnings/errors always 0 under -ShowOutput (tee output like delphi-msbuild)
+Issue: #18
+Status: closed
+Labels: bug
+Body:
+## Problem (blocking defect in #17)
+
+`Invoke-DccExe` under `-ShowOutput` streamed output and returned
+`Output = $null` instead of capturing it.  `Get-DccBuildCount` (added in #17) is
+then fed `$null` and returns 0 / 0.  Because `delphi-powershell-ci`'s
+`Invoke-BuildPipeline` ALWAYS passes `-ShowOutput`, every module-driven DCCBuild
+reports `warnings = 0, errors = 0` regardless of reality -- so the parity added
+in #17 is dead on the exact path it was built for, and a warnings-as-errors gate
+would be silently defeated.
+
+Proven two ways:
+- Code: `Invoke-DccExe` had `if ($ShowOutput) { ... Output = $null }`.
+- Empirically: a `W1035`-producing `.dpr` built via `Invoke-DelphiBuild
+  -BuildEngine DCCBuild` emitted the warning to the console yet reported
+  `Warnings = 0`; feeding the same text to `Get-DccBuildCount` directly yields
+  `Warnings = 1` -- purely the missing capture, not the regex.
+
+This also corrects a false claim in #17's docs: the `-ShowOutput -> 0` behavior
+was described as "the same limitation delphi-msbuild has."  It is not --
+`Invoke-MsbuildExe` tees (always captures; also writes each line to the host
+under `-ShowOutput`), so msbuild's counts work under `-ShowOutput`.  This
+supersedes #17's acceptance criterion "omitting captured output (-ShowOutput)
+yields 0/0, consistent with msbuild", which was based on that wrong premise.
+
+## Fix
+
+Make `Invoke-DccExe` tee exactly like `Invoke-MsbuildExe`: accumulate every
+line into a list, and additionally `Write-Host` each line when `-ShowOutput` is
+set.  `Output` is then always populated, `Get-DccBuildCount` works, and as a
+bonus the result object's `.output` (previously always `$null` for DCCBuild via
+the module) becomes populated too.
+
+## Acceptance criteria
+
+- [ ] `Invoke-DccExe` returns captured `Output` whether or not `-ShowOutput` is set
+- [ ] Under `-ShowOutput`, output is additionally streamed to the host (tee)
+- [ ] A `W####`-producing build through the module path reports `warnings >= 1`
+- [ ] `Get-DccBuildCount` fed the captured output yields the real count under `-ShowOutput`
+- [ ] Docs no longer claim the counts are 0 under `-ShowOutput`
+- [ ] The result object's `.output` is populated under `-ShowOutput`
+
+---
