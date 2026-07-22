@@ -93,6 +93,13 @@
     -OutputFile writes the result as compressed JSON to the given path.
     -OutputFile is written even when -Format object is used (default).
     -OutputFile JSON round-trips to an object whose fields match the source.
+
+  Describe 14 - Get-DccBuildCount (warnings/errors parity with delphi-msbuild):
+    Null / empty / whitespace / clean output yields 0 / 0 (no StrictMode throw).
+    Each W#### line counts as a warning; each E#### line counts as an error.
+    F#### (fatal) is folded into the error count; E#### + F#### tally together.
+    Hints (H####) count as neither warnings nor errors.
+    A realistic mixed build log is counted correctly; counts are integers.
 #>
 
 Describe 'Resolve-RootDir' {
@@ -1860,6 +1867,112 @@ Describe 'Write-DccResult -- OutputFile / Format' {
       $script:out.projectFile | Should -Be 'C:\Projects\MyApp.dpr'
     }
 
+  }
+
+}
+
+Describe 'Get-DccBuildCount' {
+
+  BeforeAll {
+    . "$PSScriptRoot/TestHelpers.ps1"
+    . (Get-DccBuildScriptPath)
+  }
+
+  It 'returns 0 / 0 for null output' {
+    $result = Get-DccBuildCount -Output $null
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'returns 0 / 0 for empty output' {
+    $result = Get-DccBuildCount -Output ''
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'returns 0 / 0 for whitespace-only output' {
+    $result = Get-DccBuildCount -Output "   `r`n `t"
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'returns 0 / 0 for clean output with no diagnostic codes' {
+    $out = @(
+      'Embarcadero Delphi for Win32 compiler version 35.0',
+      'Copyright (c) 1983,2022 Embarcadero Technologies, Inc.',
+      '55628 lines, 1.23 seconds, 123456 bytes code, 7890 bytes data.'
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'counts each W#### line as a warning' {
+    $out = @(
+      "MyUnit.pas(12): W1002 Symbol 'Foo' is specific to a platform",
+      "MyUnit.pas(20): W1036 Variable 'Bar' might not have been initialized"
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 2
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'counts each E#### line as an error' {
+    $out = @(
+      "MyUnit.pas(30): E2003 Undeclared identifier: 'Baz'",
+      "MyUnit.pas(31): E2003 Undeclared identifier: 'Qux'"
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 2
+  }
+
+  It 'folds F#### (fatal) into the error count' {
+    $out = "MyProj.dpr(5): F1026 File not found: 'Missing.dcu'"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 1
+  }
+
+  It 'counts E#### and F#### together as errors' {
+    $out = @(
+      "MyUnit.pas(30): E2003 Undeclared identifier: 'Baz'",
+      "MyProj.dpr(5): F2063 Could not compile used unit 'MyUnit.pas'"
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 2
+  }
+
+  It 'does not count hints (H####) as warnings or errors' {
+    $out = @(
+      "MyUnit.pas(8): H2164 Variable 'Unused' is declared but never used in 'DoStuff'",
+      "MyUnit.pas(9): H2077 Value assigned to 'X' never used"
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 0
+    $result.Errors   | Should -Be 0
+  }
+
+  It 'counts a realistic mixed build log correctly' {
+    $out = @(
+      'Embarcadero Delphi for Win32 compiler version 35.0',
+      'Copyright (c) 1983,2022 Embarcadero Technologies, Inc.',
+      "Main.pas(8): H2164 Variable 'Unused' is declared but never used",
+      "Main.pas(12): W1002 Symbol 'Foo' is specific to a platform",
+      "Main.pas(20): W1036 Variable 'Bar' might not have been initialized",
+      "Main.pas(30): E2003 Undeclared identifier: 'Baz'",
+      "Main.dpr(5): F2063 Could not compile used unit 'Main.pas'"
+    ) -join "`r`n"
+    $result = Get-DccBuildCount -Output $out
+    $result.Warnings | Should -Be 2
+    $result.Errors   | Should -Be 2
+  }
+
+  It 'returns integers, not strings' {
+    $result = Get-DccBuildCount -Output "MyUnit.pas(1): W1002 msg"
+    $result.Warnings | Should -BeOfType [int]
+    $result.Errors   | Should -BeOfType [int]
   }
 
 }

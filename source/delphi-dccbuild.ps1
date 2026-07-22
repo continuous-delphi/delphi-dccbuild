@@ -95,6 +95,15 @@ NOTES
   either engine's result uniformly.  Omitting both preserves the current
   default (object to the pipeline).
 
+  The result object carries integer .warnings and .errors counts (matching
+  delphi-msbuild.ps1).  dcc32 emits no MSBuild-style summary block, so these are
+  counted from the compiler's diagnostic codes: .warnings from W#### lines and
+  .errors from E#### plus F#### (fatal) lines; hints (H####) count as neither.
+  Codes are counted rather than the localized severity words so the tally holds
+  under non-English toolchains.  With -Verbosity quiet (which suppresses
+  hints/warnings) or -ShowOutput (which does not capture output) the counts are
+  0 -- the same limitation delphi-msbuild has.
+
   Exit codes:
     0  success
     1  unexpected error
@@ -248,7 +257,7 @@ $ExitRootDirError     = 3
 $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 
-$script:Version = '0.4.9'
+$script:Version = '0.4.10'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -531,6 +540,30 @@ function Invoke-DccProject {
 # delphi-powershell-ci can marshal either engine's result uniformly.  Separated
 # into its own function so tests can exercise the file/format contract without
 # invoking a compiler.
+# Count warnings and errors from captured dcc32 output.
+# Returns [pscustomobject]@{ Warnings; Errors }.
+#
+# Unlike MSBuild, dcc32 emits no "N Warning(s) / N Error(s)" summary block; it
+# emits per-diagnostic lines carrying stable message codes: H#### (hint),
+# W#### (warning), E#### (error), F#### (fatal).  Counting the CODES is
+# locale-robust -- the codes are invariant while the severity words
+# ("Warning:", "Fatal:") are localized.  FATAL (F####) is folded into Errors
+# for parity with MSBuild's error tally; hints (H####) count as neither.
+#
+# When output is null/empty (e.g. -ShowOutput streamed it and did not capture),
+# both counts are 0 -- the same limitation delphi-msbuild's Get-BuildCount has.
+function Get-DccBuildCount {
+  param([string]$Output)
+
+  $warnings = 0
+  $errors   = 0
+  if (-not [string]::IsNullOrWhiteSpace($Output)) {
+    $warnings = [regex]::Matches($Output, '\bW\d{4}\b').Count
+    $errors   = [regex]::Matches($Output, '\b[EF]\d{4}\b').Count
+  }
+  return [pscustomobject]@{ Warnings = $warnings; Errors = $errors }
+}
+
 function Write-DccResult {
   param(
     [psobject]$ResultObject,
@@ -628,6 +661,11 @@ try {
     -WorkingDirectory  $resolvedWorkingDir `
     -ShowOutput:$ShowOutput
 
+  # Warning/error tally parsed from the captured compiler output.  Matches
+  # delphi-msbuild's warnings/errors fields so delphi-powershell-ci reads
+  # either engine's result uniformly.
+  $counts = Get-DccBuildCount -Output $buildResult.Output
+
   $resultObj = [pscustomobject]@{
     scriptVersion  = $script:Version
     projectFile    = $resolvedProjectFile
@@ -654,6 +692,8 @@ try {
     workingDir     = $resolvedWorkingDir
     exitCode       = $buildResult.ExitCode
     success        = ($buildResult.ExitCode -eq 0)
+    warnings       = $counts.Warnings
+    errors         = $counts.Errors
     output         = $buildResult.Output
   }
 

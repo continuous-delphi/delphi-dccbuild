@@ -240,3 +240,67 @@ unaffected. After this lands, re-sync the bundled copy in delphi-powershell-ci.
 - [ ] `delphi-powershell-ci` `Invoke-DelphiBuild -BuildEngine DCCBuild` marshals the result end-to-end
 
 ---
+Title: Add warnings/errors counts to the result object (parity with delphi-msbuild)
+Issue: #17
+Status: closed
+Labels: enhancement
+Body:
+## Problem
+
+`delphi-msbuild.ps1` populates `warnings` and `errors` integer fields on its
+result object (via `Get-BuildCount`, which regex-parses MSBuild's summary block
+`N Warning(s)` / `N Error(s)`).  `delphi-dccbuild.ps1` emits neither.
+
+`delphi-powershell-ci`'s `Invoke-BuildPipeline` reads `.warnings` / `.errors`
+from the tool's JSON and DEFAULTS them to 0 when absent (it even documents the
+mismatch: "delphi-msbuild carries warnings/errors, delphi-dccbuild does not").
+The public `Invoke-DelphiBuild` cmdlet then surfaces `Warnings` / `Errors` to
+every caller.  Net effect: a DCC-engine build ALWAYS reports `Warnings = 0,
+Errors = 0`, even when dcc32 emitted diagnostics -- silently wrong, and the last
+field where the two engines diverge (see #16 for the -OutputFile/-Format parity).
+
+## Why the msbuild implementation cannot be reused verbatim
+
+dcc32 has no MSBuild-style `N Warning(s)` / `N Error(s)` summary block.  It emits
+per-diagnostic lines carrying stable message codes: `H####` (hint), `W####`
+(warning), `E####` (error), `F####` (fatal).  The counts must be derived by
+counting those codes, not by parsing a summary.
+
+Count CODES, not severity words: the codes are locale-stable, whereas the words
+(`Warning:`, `Fatal:`) are localized -- a build under a non-English IDE locale
+would defeat word-based parsing.
+
+## Proposed
+
+Add a `Get-DccBuildCount` helper (mirroring msbuild's `Get-BuildCount`) that,
+from the captured compiler output, returns:
+
+- `warnings` = number of `\bW\d{4}\b` occurrences
+- `errors`   = number of `\b[EF]\d{4}\b` occurrences -- FATAL (`F####`) is folded
+               into `errors` for parity with MSBuild's error tally (no separate
+               `fatals` field, to keep the two engines' shapes symmetric)
+
+Add `warnings` and `errors` to the result object next to `success`, matching
+delphi-msbuild's field names so the CI module reads either engine uniformly.
+After this lands, re-sync the bundled copy in delphi-powershell-ci.
+
+## Known limitations (document, do not fix here)
+
+- `-Verbosity quiet` (`-Q`) suppresses hints/warnings, so the warning count
+  legitimately drops toward 0 -- counts reflect what dcc32 actually emitted.
+- `-ShowOutput` streams output and sets `output = $null`, so there is nothing to
+  parse and counts are 0.  delphi-msbuild has the identical limitation (it also
+  parses captured output), so the engines stay consistent.
+
+## Acceptance criteria
+
+- [ ] `Get-DccBuildCount` returns `Warnings` from `W####` occurrences and
+      `Errors` from `E####` + `F####` occurrences
+- [ ] Hints (`H####`) are counted as neither warnings nor errors
+- [ ] Null / empty / whitespace output yields 0 / 0 (no throw under StrictMode)
+- [ ] The result object carries integer `warnings` and `errors` fields
+- [ ] Field names match delphi-msbuild so `Invoke-BuildPipeline` reads them
+      without its absent-property fallback
+- [ ] Omitting captured output (-ShowOutput) yields 0 / 0, consistent with msbuild
+
+---

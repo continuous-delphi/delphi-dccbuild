@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.10] - 2026-07-21
+
+- Add integer `warnings` and `errors` fields to the result object, matching
+  `delphi-msbuild.ps1` so `delphi-powershell-ci` reports accurate counts for
+  DCC builds instead of defaulting them to 0.  dcc32 has no MSBuild-style
+  summary block, so the counts are parsed from diagnostic codes (`W####`;
+  `E####` plus fatal `F####`, folded into errors; hints `H####` excluded) --
+  counting codes rather than localized severity words
+  [#17](https://github.com/continuous-delphi/delphi-dccbuild/issues/17)
+
 ## [0.4.8] - 2026-07-21
 
 - Add `-OutputFile <path>` (writes the result object as compressed JSON to a
