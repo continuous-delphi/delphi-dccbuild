@@ -57,7 +57,12 @@
     ResourcePath single/multiple adds -R (semicolon-joined); omitted adds nothing.
     BplOutputDir/DcpOutputDir/BpiOutputDir add -LE/-LN/-NB; omitted add nothing.
     LinkPackage single/multiple adds -LU (semicolon-joined); omitted adds nothing (static default).
+    Linker adds --linker with the resolved path; omitted adds nothing.
+    LibraryPath single/multiple adds ONE --libpath (semicolon-joined); omitted adds nothing.
+    LinkerOption emits one --linker-option per entry, verbatim, in order; omitted adds nothing.
+    AllowUndefined adds --allow-undefined; TargetTriple adds --target; omitted add nothing.
     ExtraArgs appended verbatim after modeled switches; boundaries/order preserved; omitted adds nothing.
+    ExtraArgs still come after the linker switches.
 
   Describe 8 - Main flow (via Invoke-ToolProcess, no DCC calls):
     Exits 3 when no rootDir is provided (no pipeline, no -RootDir).
@@ -80,6 +85,8 @@
   Describe 11 - Invoke-DccProject working directory and relative-path anchoring:
     WorkingDirectory is forwarded to Invoke-DccExe.
     Relative -ExeOutputDir anchors to the caller CWD, not the project dir.
+    Relative -Linker / -LibraryPath anchor to the caller CWD, not the project dir.
+    -LinkerOption / -TargetTriple pass through untouched (never path-resolved).
 
   Describe 12 - Invoke-DccExe working directory (invokes cmd.exe to observe child CWD):
     Child process runs in the requested working directory; [Environment]::CurrentDirectory restored.
@@ -1172,6 +1179,293 @@ Describe 'Invoke-DccProject' {
 
   }
 
+  Context 'Linker adds --linker with the resolved path' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -Linker       'C:\Delphi\RADStudio37\bin64\dcc-ld.lld.exe'
+    }
+
+    It 'includes the --linker switch with the linker path' {
+      $script:capturedArgs | Should -Contain '--linker:C:\Delphi\RADStudio37\bin64\dcc-ld.lld.exe'
+    }
+
+  }
+
+  Context 'Linker omitted adds no --linker switch' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with --linker' {
+      $script:capturedArgs | Where-Object { $_ -like '--linker*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'LibraryPath single entry adds --libpath' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -LibraryPath  @('C:\sysroot\lib')
+    }
+
+    It 'includes the --libpath switch with the single path' {
+      $script:capturedArgs | Should -Contain '--libpath:C:\sysroot\lib'
+    }
+
+  }
+
+  Context 'LibraryPath multiple entries are joined with semicolons into ONE switch' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal' `
+        -LibraryPath  @('C:\aaa', 'C:\bbb')
+    }
+
+    It 'passes a single semicolon-separated --libpath argument' {
+      $script:capturedArgs | Should -Contain '--libpath:C:\aaa;C:\bbb'
+    }
+
+    It 'does not emit one --libpath switch per entry' {
+      @($script:capturedArgs | Where-Object { $_ -like '--libpath:*' }).Count | Should -Be 1
+    }
+
+  }
+
+  Context 'LibraryPath omitted adds no --libpath switch' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with --libpath' {
+      $script:capturedArgs | Where-Object { $_ -like '--libpath*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'LinkerOption emits one --linker-option per array entry, verbatim' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath  'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile   'C:\Projects\MyApp.dpr' `
+        -Config        'Debug' `
+        -Target        'Build' `
+        -Verbosity     'normal' `
+        -LinkerOption  @('--as-needed', '-z now')
+    }
+
+    It 'emits one switch per entry' {
+      @($script:capturedArgs | Where-Object { $_ -like '--linker-option:*' }).Count | Should -Be 2
+    }
+
+    It 'passes each value verbatim, including one containing a space' {
+      $script:capturedArgs | Should -Contain '--linker-option:--as-needed'
+      $script:capturedArgs | Should -Contain '--linker-option:-z now'
+    }
+
+    It 'preserves the relative order of the entries' {
+      $first  = [array]::IndexOf($script:capturedArgs, '--linker-option:--as-needed')
+      $second = [array]::IndexOf($script:capturedArgs, '--linker-option:-z now')
+      $first  | Should -BeGreaterOrEqual 0
+      $second | Should -BeGreaterThan $first
+    }
+
+  }
+
+  Context 'LinkerOption omitted adds no --linker-option switch' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+    }
+
+    It 'no argument starts with --linker-option' {
+      $script:capturedArgs | Where-Object { $_ -like '--linker-option*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'AllowUndefined adds --allow-undefined; omitted adds nothing' {
+
+    BeforeAll {
+      $script:withSwitch = $null
+      $script:without    = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath    'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile     'C:\Projects\MyLib.dpr' `
+        -Config          'Debug' `
+        -Target          'Build' `
+        -Verbosity       'normal' `
+        -AllowUndefined
+      $script:withSwitch = $script:capturedArgs
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile  'C:\Projects\MyLib.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+      $script:without = $script:capturedArgs
+    }
+
+    It 'includes --allow-undefined when the switch is set' {
+      $script:withSwitch | Should -Contain '--allow-undefined'
+    }
+
+    It 'omits --allow-undefined when the switch is not set' {
+      $script:without | Should -Not -Contain '--allow-undefined'
+    }
+
+  }
+
+  Context 'TargetTriple adds --target; omitted adds nothing' {
+
+    BeforeAll {
+      $script:withTriple = $null
+      $script:noTriple   = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath  'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile   'C:\Projects\MyApp.dpr' `
+        -Config        'Debug' `
+        -Target        'Build' `
+        -Verbosity     'normal' `
+        -TargetTriple  'x86_64-unknown-linux-gnu'
+      $script:withTriple = $script:capturedArgs
+
+      Invoke-DccProject `
+        -CompilerPath 'C:\RAD\Studio\23.0\bin\dcc32.exe' `
+        -ProjectFile  'C:\Projects\MyApp.dpr' `
+        -Config       'Debug' `
+        -Target       'Build' `
+        -Verbosity    'normal'
+      $script:noTriple = $script:capturedArgs
+    }
+
+    It 'includes the --target switch with the triple verbatim' {
+      $script:withTriple | Should -Contain '--target:x86_64-unknown-linux-gnu'
+    }
+
+    It 'no argument starts with --target when omitted' {
+      $script:noTriple | Where-Object { $_ -like '--target*' } | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'ExtraArgs still come after the linker switches' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      Invoke-DccProject `
+        -CompilerPath   'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile    'C:\Projects\MyApp.dpr' `
+        -Config         'Debug' `
+        -Target         'Build' `
+        -Verbosity      'normal' `
+        -LinkerOption   @('--as-needed') `
+        -AllowUndefined `
+        -ExtraArgs      @('-JL')
+    }
+
+    It 'the -JL extra arg appears after --linker-option and --allow-undefined' {
+      $extraIdx = [array]::IndexOf($script:capturedArgs, '-JL')
+      $optIdx   = [array]::IndexOf($script:capturedArgs, '--linker-option:--as-needed')
+      $undefIdx = [array]::IndexOf($script:capturedArgs, '--allow-undefined')
+      $extraIdx | Should -BeGreaterThan $optIdx
+      $extraIdx | Should -BeGreaterThan $undefIdx
+    }
+
+  }
+
   Context 'ExtraArgs single entry is appended verbatim' {
 
     BeforeAll {
@@ -1788,6 +2082,62 @@ Describe 'Invoke-DccProject -- working directory and relative-path anchoring' {
 
     It 'does not anchor the output under the project folder' {
       ($script:capturedArgs | Where-Object { $_ -like '*Projects\Deep\out*' }) | Should -BeNullOrEmpty
+    }
+
+  }
+
+  Context 'relative Linker / LibraryPath anchor to the caller CWD, not the project dir' {
+
+    BeforeAll {
+      $script:capturedArgs = $null
+      Mock Invoke-DccExe {
+        $script:capturedArgs = $Arguments
+        return [pscustomobject]@{ ExitCode = 0; Output = '' }
+      }
+
+      $script:lnkAnchor = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'dccbuild-linker-anchor')
+      $null = New-Item -ItemType Directory -Path $script:lnkAnchor -Force
+      $script:lnkOriginalEnvCwd = [System.Environment]::CurrentDirectory
+      [System.Environment]::CurrentDirectory = $script:lnkAnchor
+
+      Invoke-DccProject `
+        -CompilerPath     'C:\RAD\Studio\37.0\bin64\dcclinux64.exe' `
+        -ProjectFile      'C:\Projects\Deep\MyApp.dpr' `
+        -Config           'Debug' `
+        -Target           'Build' `
+        -Verbosity        'normal' `
+        -Linker           'tools\dcc-ld.lld.exe' `
+        -LibraryPath      @('sysroot\lib') `
+        -LinkerOption     @('--as-needed') `
+        -TargetTriple     'x86_64-unknown-linux-gnu' `
+        -WorkingDirectory 'C:\Projects\Deep'
+    }
+
+    AfterAll {
+      [System.Environment]::CurrentDirectory = $script:lnkOriginalEnvCwd
+      Remove-Item -LiteralPath $script:lnkAnchor -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'emits --linker resolved against the caller CWD (temp anchor)' {
+      $expected = '--linker:' + [System.IO.Path]::Combine([System.IO.Path]::GetFullPath($script:lnkAnchor), 'tools', 'dcc-ld.lld.exe')
+      $script:capturedArgs | Should -Contain $expected
+    }
+
+    It 'emits --libpath resolved against the caller CWD (temp anchor)' {
+      $expected = '--libpath:' + [System.IO.Path]::Combine([System.IO.Path]::GetFullPath($script:lnkAnchor), 'sysroot', 'lib')
+      $script:capturedArgs | Should -Contain $expected
+    }
+
+    It 'does not anchor the linker or library path under the project folder' {
+      ($script:capturedArgs | Where-Object { $_ -like '*Projects\Deep\tools*' -or $_ -like '*Projects\Deep\sysroot*' }) | Should -BeNullOrEmpty
+    }
+
+    It 'leaves --linker-option untouched (not treated as a path)' {
+      $script:capturedArgs | Should -Contain '--linker-option:--as-needed'
+    }
+
+    It 'leaves --target untouched (not treated as a path)' {
+      $script:capturedArgs | Should -Contain '--target:x86_64-unknown-linux-gnu'
     }
 
   }

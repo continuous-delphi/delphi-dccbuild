@@ -421,3 +421,118 @@ distinct from the existing ones -- do not let `dcc32` emit a cryptic I/O error.
 - [ ] Existing callers that pass already-existing (or absolute) dirs are unaffected
 
 ---
+Title: Model dcclinux64 linker/back-end switches (--linker, --linker-option, --libpath, --allow-undefined, --target)
+Issue: #20
+Status: closed
+Labels: enhancement
+Body:
+## Context -- Delphi 13 Update 2 ships a new LLVM lld linker
+
+Delphi 13 Update 2 adds `bin64\dcc-ld.lld.exe` (LLD 20.1.8) alongside the
+pre-existing `bin64\ld.lld.exe` (LLD 20.1.7). Verified against RAD Studio 37.0
+(`C:\Delphi\RADStudio37`; registry `InstalledUpdates` = "Delphi 13 and
+C++Builder 13 Update 2"):
+
+    bin64\dcc-ld.lld.exe --version
+      LLD 20.1.8 (git@ngnu.embarcadero.com:llvm-project 049be246...) (compatible with GNU linkers)
+
+**No change is required for delphi-dccbuild to build Linux64 with the new
+linker.** `dcc-ld.lld` is a LINKER, not a DCC front end -- it must NOT be added
+to `$script:CompilerMap`. `dcclinux64.exe` (still the Linux64 compiler, version
+37.0) selects it automatically with no switch. Confirmed by a live compile,
+which echoes its linker command line:
+
+    Linker command line: C:\Delphi\RADStudio37\bin64\dcc-ld.lld.exe -o hello
+      -e _ZN5Hello14initializationEv --gc-sections --dynamic-list hello.exp
+      -z relro --build-id --eh-frame-hdr -m elf_x86_64 ... -rpath $ORIGIN
+
+Nothing in `bin\CodeGear.Delphi.Targets` references the linker -- the choice is
+internal to dcclinux64. The existing mapping (`Linux64` -> `dcclinux64`, and
+`Get-CompilerBinFolder` sending any name ending in `64` to `bin64`) already
+lands on the compiler that sits next to `dcc-ld.lld.exe`. Linker diagnostics
+arrive as ordinary `E####`/`F####` codes, so `Get-DccBuildCount` already tallies
+them (`[regex]::Matches` is case-sensitive, so `elf_x86_64` in the echoed
+command line is not a false positive).
+
+## Problem
+
+`dcclinux64` advertises five linker/back-end switches that the script does not
+model. They are reachable today only through `-ExtraArgs`:
+
+    --target:<triple>         = pass <triple> to the LLVM back-end
+    --linker-option:<string>  = pass <string> to the linker command line
+    --allow-undefined         = Don't pass --no-undefined to the linker command line
+    --libpath:<paths>         = Specify linker library search path
+    --linker:<file>           = Specify linker executable
+
+With the new lld shipping next to the old one, `--linker` is now a switch
+callers have a concrete reason to reach for (pinning `dcc-ld.lld.exe` vs
+`ld.lld.exe`), and `--libpath` is required to point at a Linux sysroot.
+
+## The actual defect: -ExtraArgs bypasses path resolution
+
+`--linker:<file>` and `--libpath:<paths>` take PATHS, and `-ExtraArgs` bypasses
+`Resolve-DccPath` / `Resolve-DccPaths`. Because `Invoke-DccExe` runs the
+compiler from the project file's folder, a RELATIVE path passed through
+`-ExtraArgs` anchors to the project dir rather than the caller's original CWD --
+inconsistent with `-UnitSearchPath`, `-IncludePath`, `-ResourcePath` and the
+five output-dir params, which are all resolved against the caller's CWD before
+the working-directory change.
+
+Confirmed empirically -- run from `C:\Delphi` with a relative linker path:
+
+    dcclinux64 ... --linker:RADStudio37\bin64\ld.lld.exe <abs-path>\hello.dpr
+    -> Linker command line: C:\Delphi\RADStudio37\bin64\ld.lld.exe ...
+
+i.e. resolved against the compiler's CWD, exactly as feared.
+
+## Proposed params
+
+| Param | dcc switch | Path resolution |
+|---|---|---|
+| `-Linker <string>` | `--linker:<file>` | single path, `Resolve-DccPath` |
+| `-LibraryPath <string[]>` | `--libpath:<;-joined>` | each path, `Resolve-DccPaths` |
+| `-LinkerOption <string[]>` | one `--linker-option:<s>` per entry | none (verbatim) |
+| `-AllowUndefined` | `--allow-undefined` | n/a (switch) |
+| `-TargetTriple <string>` | `--target:<triple>` | none (verbatim) |
+
+Verified switch semantics (observed in the echoed linker command line):
+
+- `--libpath:C:\aaa;C:\bbb` -> `-L C:\aaa -L C:\bbb`. Semicolon-separated, same
+  convention as `-U` / `-I`, so `-LibraryPath` must join entries with ';' into a
+  SINGLE switch -- do not emit one `--libpath:` per entry.
+- `--linker:<file>` replaces the linker executable outright (tested by swapping
+  `dcc-ld.lld.exe` for `ld.lld.exe`; the echoed command line changed accordingly).
+- `--linker-option:<string>` is appended verbatim to the linker command line,
+  after the default libraries and before `-rpath`. Repeatable.
+- `--allow-undefined` and `--target:<triple>` are documented by `dcclinux64` but
+  their effect was NOT verified here (the default command line for a console exe
+  does not show `--no-undefined`). Verify both before writing their tests.
+
+## Notes
+
+- These switches are Linux64-specific in practice. Do NOT gate them on
+  `-Platform Linux64` -- the script does not validate switch/platform pairings
+  anywhere else, and other LLVM-backed targets (Android, iOS) may accept them.
+  Emit them whenever supplied, consistent with every existing param.
+- Each new param needs its corresponding `.property` on the result object, test
+  coverage in `delphi-dccbuild.Tests.ps1`, and README documentation, per the
+  repo conventions in CLAUDE.md.
+- End-to-end Linux64 LINKING could not be exercised on the dev box: no Linux SDK
+  is installed (no `SDKs` folder), so the link fails with `unable to find library
+  -lc` etc. The compile phase and the echoed linker command line are still fully
+  observable, which is sufficient to verify argument construction.
+
+## Acceptance criteria
+
+- [ ] Each param maps to the correct dcclinux64 switch; omitting a param omits the switch
+- [ ] `-LibraryPath` joins multiple paths with ';' into a single `--libpath:` switch
+- [ ] `-LinkerOption` emits one `--linker-option:` per array entry, verbatim
+- [ ] `-Linker` and `-LibraryPath` resolve relative paths against the caller's
+      original CWD (before the working-directory change), like `-UnitSearchPath`
+- [ ] `-LinkerOption` / `-TargetTriple` values pass through untouched (no path resolution)
+- [ ] Every new param appears as a property on the result object
+- [ ] README documents each new param and the Linux64 linker behavior
+- [ ] `$script:CompilerMap` is unchanged -- `dcc-ld.lld` is not a DCC front end
+- [ ] Existing non-Linux builds are unaffected
+

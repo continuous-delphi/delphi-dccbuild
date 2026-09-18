@@ -56,6 +56,21 @@ NOTES
   it makes the output depend on rtlNNN.bpl / vclNNN.bpl at load time, so the
   default remains statically linked so standalone exes keep working.
 
+  -Linker, -LibraryPath, -LinkerOption, -AllowUndefined, and -TargetTriple drive
+  the LLVM back-end and the external linker on the targets that use one -- Linux64
+  in particular, whose dcclinux64 advertises them as --linker, --libpath,
+  --linker-option, --allow-undefined, and --target.  Delphi 13 Update 2 ships
+  bin64\dcc-ld.lld.exe (LLD 20.1.8) alongside the older bin64\ld.lld.exe, and
+  dcclinux64 selects the new one automatically, so these switches are needed only
+  to pin a specific linker, point at a Linux sysroot, or pass a raw
+  linker/back-end option.  -Linker and -LibraryPath are PATHS and are resolved
+  against the caller's original CWD like the other path params (dcclinux64 would
+  otherwise resolve them against the compiler's working directory, i.e. the
+  project folder).  -LinkerOption and -TargetTriple are passed through verbatim.
+  None of them are gated on -Platform: the script does not validate
+  switch/platform pairings anywhere else, and other LLVM-backed targets may
+  accept them.
+
   -ExtraArgs is an escape hatch: each element is appended verbatim after all
   modeled switches (no splitting or re-escaping) for dcc32 options this script
   does not model (e.g. -$D0, -$L-, -JL, -V*).
@@ -203,6 +218,36 @@ param(
   # rtlNNN.bpl is absent on the target.
   [string[]]$LinkPackage = @(),
 
+  # Linker executable to use instead of the compiler's default (--linker:<file>).
+  # Relevant to the targets that invoke an external linker -- Linux64 above all.
+  # Delphi 13 Update 2 ships bin64\dcc-ld.lld.exe (LLD 20.1.8) next to the older
+  # bin64\ld.lld.exe, and dcclinux64 picks dcc-ld.lld.exe on its own, so this is
+  # only needed to pin a specific linker.  A PATH: resolved to absolute against
+  # the caller's CWD before the working-directory change, because dcclinux64
+  # would otherwise resolve a relative value against the project folder.
+  [string]$Linker,
+
+  # Linker library search paths (--libpath:<paths>).  Multiple paths are joined
+  # with semicolons into a single switch -- matching how dcclinux64 parses it
+  # (verified: --libpath:C:\a;C:\b emits -L C:\a -L C:\b) and how -U / -I behave
+  # here.  PATHS: each entry is resolved to absolute against the caller's CWD.
+  [string[]]$LibraryPath = @(),
+
+  # Raw options appended to the linker command line (--linker-option:<string>).
+  # Repeatable: one --linker-option switch is emitted per array element, and each
+  # value is passed through verbatim (not a path, never resolved or re-escaped).
+  [string[]]$LinkerOption = @(),
+
+  # Do not pass --no-undefined to the linker (--allow-undefined), permitting
+  # unresolved symbols at link time.  Visible on shared-library (.so) targets,
+  # where --no-undefined is on by default; a console exe's link line does not
+  # carry it either way.
+  [switch]$AllowUndefined,
+
+  # Target triple handed to the LLVM back-end (--target:<triple>), e.g.
+  # x86_64-unknown-linux-gnu.  Passed through verbatim (not a path).
+  [string]$TargetTriple,
+
   # Skip loading dcc32.cfg (--no-config).  By default DCC auto-loads
   # <RootDir>\bin\dcc32.cfg, which on portable/trimmed toolchains can carry
   # stale absolute or $(BDS)-relative library paths that silently inject wrong
@@ -272,7 +317,7 @@ $ExitProjectNotFound  = 4
 $ExitBuildFailed      = 5
 $ExitOutputDirError   = 6
 
-$script:Version = '0.4.13'
+$script:Version = '0.4.14'
 
 # Platform -> DCC compiler base-name map.
 # Mirrors the CompilerMap in delphi-inspect.ps1; kept local so this script
@@ -522,6 +567,11 @@ function Invoke-DccProject {
     [string]$DcpOutputDir,
     [string]$BpiOutputDir,
     [string[]]$LinkPackage    = @(),
+    [string]$Linker,
+    [string[]]$LibraryPath    = @(),
+    [string[]]$LinkerOption   = @(),
+    [switch]$AllowUndefined,
+    [string]$TargetTriple,
     [switch]$NoConfig,
     [string[]]$ExtraArgs      = @(),
     [string]$WorkingDirectory,
@@ -532,16 +582,19 @@ function Invoke-DccProject {
   # before Invoke-DccExe changes the compiler's working directory.  This keeps
   # these outputs anchored to the caller's CWD (pre-cd behavior) rather than
   # having them silently follow the compiler into the project folder.  The
-  # project file, defines, namespaces, link packages, and -ExtraArgs are left
-  # untouched (already absolute, or not paths, or a verbatim escape hatch).
+  # project file, defines, namespaces, link packages, linker options, the target
+  # triple, and -ExtraArgs are left untouched (already absolute, or not paths, or
+  # a verbatim escape hatch).
   $ExeOutputDir   = Resolve-DccPath  -Path  $ExeOutputDir
   $DcuOutputDir   = Resolve-DccPath  -Path  $DcuOutputDir
   $BplOutputDir   = Resolve-DccPath  -Path  $BplOutputDir
   $DcpOutputDir   = Resolve-DccPath  -Path  $DcpOutputDir
   $BpiOutputDir   = Resolve-DccPath  -Path  $BpiOutputDir
+  $Linker         = Resolve-DccPath  -Path  $Linker
   $UnitSearchPath = @(Resolve-DccPaths -Paths $UnitSearchPath)
   $IncludePath    = @(Resolve-DccPaths -Paths $IncludePath)
   $ResourcePath   = @(Resolve-DccPaths -Paths $ResourcePath)
+  $LibraryPath    = @(Resolve-DccPaths -Paths $LibraryPath)
 
   $dccArgs = @($ProjectFile)
 
@@ -580,6 +633,23 @@ function Invoke-DccProject {
 
   # Runtime packages to link (opt-in): joined with semicolons into a single -LU flag
   if ($LinkPackage.Count -gt 0) { $dccArgs += "-LU$($LinkPackage -join ';')" }
+
+  # LLVM back-end / external-linker switches (Linux64 and other LLVM-backed
+  # targets).  Not gated on platform -- the script validates no other
+  # switch/platform pairing either.
+  if (-not [string]::IsNullOrWhiteSpace($TargetTriple)) { $dccArgs += "--target:$TargetTriple" }
+  if (-not [string]::IsNullOrWhiteSpace($Linker))       { $dccArgs += "--linker:$Linker" }
+
+  # Library search paths: semicolon-joined into ONE --libpath switch (dcclinux64
+  # splits it into a -L per entry), not one switch per path.
+  if ($LibraryPath.Count -gt 0) { $dccArgs += "--libpath:$($LibraryPath -join ';')" }
+
+  if ($AllowUndefined) { $dccArgs += '--allow-undefined' }
+
+  # Raw linker options: one --linker-option switch per element, value verbatim.
+  foreach ($opt in $LinkerOption) {
+    if (-not [string]::IsNullOrWhiteSpace($opt)) { $dccArgs += "--linker-option:$opt" }
+  }
 
   # Extra pass-through args appended verbatim after all modeled switches.
   # Adding the array with += preserves each element as a distinct argument.
@@ -739,6 +809,11 @@ try {
     -DcpOutputDir      $DcpOutputDir `
     -BpiOutputDir      $BpiOutputDir `
     -LinkPackage       $LinkPackage `
+    -Linker            $Linker `
+    -LibraryPath       $LibraryPath `
+    -LinkerOption      $LinkerOption `
+    -AllowUndefined:$AllowUndefined `
+    -TargetTriple      $TargetTriple `
     -NoConfig:$NoConfig `
     -ExtraArgs         $ExtraArgs `
     -WorkingDirectory  $resolvedWorkingDir `
@@ -769,6 +844,11 @@ try {
     dcpOutputDir   = if ([string]::IsNullOrWhiteSpace($DcpOutputDir)) { $null } else { $DcpOutputDir }
     bpiOutputDir   = if ([string]::IsNullOrWhiteSpace($BpiOutputDir)) { $null } else { $BpiOutputDir }
     linkPackage    = if ($LinkPackage.Count    -eq 0) { $null } else { $LinkPackage }
+    linker         = if ([string]::IsNullOrWhiteSpace($Linker)) { $null } else { $Linker }
+    libraryPath    = if ($LibraryPath.Count    -eq 0) { $null } else { $LibraryPath }
+    linkerOption   = if ($LinkerOption.Count   -eq 0) { $null } else { $LinkerOption }
+    allowUndefined = [bool]$AllowUndefined
+    targetTriple   = if ([string]::IsNullOrWhiteSpace($TargetTriple)) { $null } else { $TargetTriple }
     noConfig       = [bool]$NoConfig
     extraArgs      = if ($ExtraArgs.Count      -eq 0) { $null } else { $ExtraArgs }
     skipRsvars     = [bool]$SkipRsvars

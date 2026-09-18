@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.14] - 2026-09-18
+
+- Add `-Linker`, `-LibraryPath`, `-LinkerOption`, `-AllowUndefined`, and
+  `-TargetTriple`, modelling the `dcclinux64` LLVM back-end and external-linker
+  switches (`--linker`, `--libpath`, `--linker-option`, `--allow-undefined`,
+  `--target`).  Previously reachable only through `-ExtraArgs`, which bypasses
+  path resolution -- so a relative linker or library path was resolved against
+  the project folder the compiler runs from rather than the caller's working
+  directory.  `-Linker` and `-LibraryPath` are now resolved like the other path
+  parameters.  Relevant to Delphi 13 Update 2, which ships
+  `bin64\dcc-ld.lld.exe` (LLD 20.1.8) next to the older `bin64\ld.lld.exe`;
+  `dcclinux64` selects the new linker on its own, so no change was needed for
+  Linux64 builds to use it
+  [#20](https://github.com/continuous-delphi/delphi-dccbuild/issues/20)
+
 ## [0.4.12] - 2026-07-21
 
 - Auto-create output directories (`-ExeOutputDir`, `-DcuOutputDir`,

@@ -373,6 +373,70 @@ delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
     -UnitSearchPath .\out\dcp -LinkPackage rtl, vcl, MyLib
 ```
 
+## -Linker / -LibraryPath / -LinkerOption / -AllowUndefined / -TargetTriple
+
+```text
+-Linker         <string>
+-LibraryPath    <string[]>
+-LinkerOption   <string[]>
+-AllowUndefined
+-TargetTriple   <string>
+```
+
+Control the LLVM back-end and the external linker on targets that use one --
+`Linux64` above all, whose `dcclinux64` advertises these as `--linker`,
+`--libpath`, `--linker-option`, `--allow-undefined`, and `--target`.
+
+| Parameter | DCC switch | Notes |
+|-----------|------------|-------|
+| `-Linker` | `--linker:<file>` | Linker executable to use instead of the default |
+| `-LibraryPath` | `--libpath:<paths>` | Linker library search paths, `;`-joined into one switch |
+| `-LinkerOption` | `--linker-option:<string>` | One switch per array element, appended to the linker command line |
+| `-AllowUndefined` | `--allow-undefined` | Do not pass `--no-undefined`; allow unresolved symbols |
+| `-TargetTriple` | `--target:<triple>` | Target triple for the LLVM back-end |
+
+**You normally do not need `-Linker`.**  Delphi 13 Update 2 ships
+`bin64\dcc-ld.lld.exe` (LLD 20.1.8) alongside the older `bin64\ld.lld.exe`, and
+`dcclinux64` selects the new one automatically.  Reach for `-Linker` only to pin
+a specific linker; use `-LibraryPath` to point at a Linux sysroot.
+
+`-LibraryPath` joins multiple entries with semicolons into a **single**
+`--libpath` argument (the compiler splits it into one `-L` per entry), matching
+how `-UnitSearchPath` and `-IncludePath` behave:
+
+```text
+--libpath:C:\sysroot\lib;C:\sysroot\usr\lib   ->   -L C:\sysroot\lib -L C:\sysroot\usr\lib
+```
+
+`-LinkerOption` is the opposite: one `--linker-option` switch is emitted per
+array element, and each value is passed through verbatim (an element containing
+spaces stays a single argument).
+
+`-Linker` and `-LibraryPath` are **paths**, so relative values are resolved to
+absolute against the caller's original working directory before the compiler is
+run -- the same rule as `-ExeOutputDir`, `-UnitSearchPath`, and the other path
+parameters.  This matters because the compiler runs from the project file's
+folder (see `-WorkingDirectory`); without this, `dcclinux64` would resolve a
+relative linker or library path against the project folder instead.
+`-LinkerOption` and `-TargetTriple` are never path-resolved.
+
+None of these parameters are gated on `-Platform`: the script validates no other
+switch/platform pairing either, and other LLVM-backed targets may accept them.
+
+When omitted, no corresponding switch is added, and the matching result-object
+properties (`.linker`, `.libraryPath`, `.linkerOption`, `.targetTriple`) are
+`$null`.  `.allowUndefined` is a bool reflecting whether the switch was set.
+
+Example (Linux64 against a sysroot, pinning the new LLD linker):
+
+```powershell
+delphi-dccbuild.ps1 -ProjectFile .\src\MyApp.dpr -RootDir $root `
+    -Platform Linux64 -Config Release `
+    -Linker "$root\bin64\dcc-ld.lld.exe" `
+    -LibraryPath 'C:\sysroot\lib', 'C:\sysroot\usr\lib' `
+    -LinkerOption '--as-needed'
+```
+
 ## -NoConfig   (switch)
 
 ```text
@@ -522,12 +586,23 @@ On success or compiler failure (exit codes 0 and 5), a single
 | `dcpOutputDir`   | string   | Value of `-DcpOutputDir`; `$null` when not supplied           |
 | `bpiOutputDir`   | string   | Value of `-BpiOutputDir`; `$null` when not supplied           |
 | `linkPackage`    | string[] | Value of `-LinkPackage`; `$null` when not supplied            |
+| `linker`         | string   | Value of `-Linker`; `$null` when not supplied                 |
+| `libraryPath`    | string[] | Value of `-LibraryPath`; `$null` when not supplied            |
+| `linkerOption`   | string[] | Value of `-LinkerOption`; `$null` when not supplied           |
+| `allowUndefined` | bool     | `$true` when `-AllowUndefined` was set                        |
+| `targetTriple`   | string   | Value of `-TargetTriple`; `$null` when not supplied           |
 | `noConfig`       | bool     | `$true` when `-NoConfig` was set (dcc32.cfg skipped)          |
 | `extraArgs`      | string[] | Value of `-ExtraArgs`; `$null` when not supplied              |
 | `skipRsvars`     | bool     | `$true` when `-SkipRsvars` was set (rsvars bypassed)          |
-| `output`         | string   | Captured DCC output; `$null` when `-ShowOutput`               |
+| `workingDir`     | string   | Directory the compiler was run from                           |
+| `warnings`       | int      | Count of `W####` diagnostics in the output                    |
+| `errors`         | int      | Count of `E####` plus `F####` diagnostics in the output       |
+| `output`         | string   | Captured DCC output; always populated, including under `-ShowOutput` |
 
-On errors before the compiler is invoked (exit codes 2, 3, 4) no result
+Path-valued properties report the value as supplied by the caller; the
+absolute form is what is passed to the compiler.
+
+On errors before the compiler is invoked (exit codes 2, 3, 4, 6) no result
 object is emitted.
 
 ------------------------------------------------------------------------
